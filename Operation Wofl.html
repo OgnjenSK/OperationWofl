@@ -168,9 +168,17 @@
 
     function createLayerImage(url, label){
       const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = url;
-      img.onerror = function(){ console.warn(label + ' failed to load'); };
+      const resolved = new URL(url, location.href).href;
+      if(/^https?:\/\//i.test(resolved)){
+        try {
+          if(new URL(resolved).origin !== location.origin){
+            img.crossOrigin = 'anonymous';
+          }
+        } catch(e){}
+      }
+      img.src = resolved;
+      img.onerror = function(){ console.warn(label + ' failed to load:', resolved); };
+      img.onload = function(){ if(state.rafId == null) render(); };
       return img;
     }
 
