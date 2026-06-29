@@ -1,0 +1,14 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / env (if you add API keys later)
+.env
+.env.*
+
+# Logs
+*.log
+
+# Editor (keep shared launch/tasks; ignore personal settings)
+.vscode/settings.json
+.vscode/*.code-workspace
