@@ -5,9 +5,18 @@
       "type": "chrome",
       "request": "launch",
       "name": "Launch Game (localhost:8080)",
-      "url": "http://localhost:8080/Operation%20Wofl.html",
+      "url": "http://127.0.0.1:8080/Operation%20Wofl.html",
       "webRoot": "${workspaceFolder}",
       "preLaunchTask": "Start local server"
+    },
+    {
+      "type": "chrome",
+      "request": "launch",
+      "name": "Play Game (browser only)",
+      "url": "http://127.0.0.1:8080/Operation%20Wofl.html",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "Start local server",
+      "runtimeArgs": ["--new-window"]
     }
   ]
 }

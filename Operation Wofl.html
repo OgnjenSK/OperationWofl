@@ -178,7 +178,7 @@
       }
       img.src = resolved;
       img.onerror = function(){ console.warn(label + ' failed to load:', resolved); };
-      img.onload = function(){ if(state.rafId == null) render(); };
+      img.onload = function(){ render(); };
       return img;
     }
 
