@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aavegotchi Wofl — Repaired Main Build</title>
+  <style>
+    html,body{margin:0;height:100%;background:#bfe7ff;overflow:hidden}
+    canvas{display:block;width:100%;height:100%;image-rendering:pixelated;cursor:none}
+    #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s ease;z-index:30}
+    #menu,#levelmap{user-select:none;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;color:#fff}
+    #menu{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;background:linear-gradient(180deg,#10151c,#05070b);z-index:20;opacity:1;transition:opacity .6s}
+    #menuTitle{font-size:48px;font-weight:900;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.55)}
+    #startBtn{padding:12px 24px;font-size:16px;font-weight:700;border-radius:12px;border:0;background:#6d7ea6;color:#fff;box-shadow:0 6px 18px rgba(109,126,166,.4);cursor:pointer}
+    #levelmap{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;padding-bottom:min(10vh,80px);background:rgba(5,7,10,.96);z-index:10;opacity:0;transition:opacity .6s}
+    #levelWrap{width:min(84vw,1000px);height:min(66vh,560px);position:relative;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(2,1fr);gap:18px;padding:18px;background:linear-gradient(180deg,#0f141c,#080b11);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+    .cell{border-radius:12px;position:relative;overflow:hidden}
+    .cell span{position:absolute;left:10px;top:8px;opacity:.75;font-weight:800}
+    .bg1{background:linear-gradient(135deg,#263447,#3c506b)}
+    .bg2{background:linear-gradient(135deg,#2c3c2f,#456a4c)}
+    .bg3{background:linear-gradient(135deg,#4b2f2f,#7a4545)}
+    .bg4{background:linear-gradient(135deg,#3b2f4b,#634c7a)}
+    .bg5{background:linear-gradient(135deg,#2f474b,#4c787a)}
+    .bg6{background:linear-gradient(135deg,#4b472f,#7a7145)}
+    #missionTitleBox{position:absolute;top:-70px;left:0;right:0;text-align:center;pointer-events:none}
+    #missionTitle{font-weight:900;font-size:28px;color:#ffd400;letter-spacing:.5px;text-shadow:0 2px 12px rgba(0,0,0,.45)}
+    #missionSub{margin-top:6px;font-weight:600;font-size:15px;color:#dbe6ff;opacity:.9}
+    svg#levelArrows{position:absolute;inset:0;pointer-events:none;overflow:visible}
+    @keyframes blinkStroke{0%,45%{stroke:#FFD400}50%,100%{stroke:#FF4040}}
+    .blink-arrow{animation:blinkStroke .16s steps(1,end) infinite}
+    .arrow{stroke:#FFD400;stroke-width:16;stroke-linecap:butt;stroke-linejoin:round}
+    .legend{position:fixed;right:10px;top:10px;color:#fff;font:12px system-ui,-apple-system,Segoe UI,Roboto,Arial;opacity:.85;z-index:5}
+    .hud{position:fixed;left:10px;bottom:32px;color:#fff;font:16px system-ui,-apple-system,Segoe UI,Roboto,Arial;z-index:5}
+  </style>
+</head>
+<body>
+  <div id="fade"></div>
+  <div id="menu">
+    <div style="text-align:center">
+      <div id="menuTitle">Aavegotchi Wofl</div>
+      <div style="opacity:.75;font-size:14px">Click Start to play</div>
+    </div>
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <div id="levelmap">
+    <div id="levelWrap">
+      <div id="missionTitleBox">
+        <div id="missionTitle">Start Mission 1</div>
+        <div id="missionSub">get ready to free some prisoners.</div>
+      </div>
+      <div class="cell bg5"><span>5</span></div>
+      <div class="cell bg4"><span>4</span></div>
+      <div class="cell bg3"><span>1</span></div>
+      <div class="cell bg6"><span>6</span></div>
+      <div class="cell bg2"><span>3</span></div>
+      <div class="cell bg1"><span>2</span></div>
+      <svg id="levelArrows" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <marker id="arrowHead" markerWidth="26" markerHeight="26" refX="0" refY="13" orient="auto" markerUnits="userSpaceOnUse" overflow="visible">
+            <path d="M0,0 L26,13 L0,26 Z" fill="context-stroke" />
+          </marker>
+        </defs>
+        <line id="entry" class="arrow blink-arrow" marker-end="url(#arrowHead)" />
+        <line id="a12" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a23" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a34" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a45" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a56" class="arrow" marker-end="url(#arrowHead)" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="legend">Layer Markings ON — press L / B / N / H</div>
+  <div class="hud" id="enemyHud">ENEMIES: 10</div>
+  <canvas id="game"></canvas>
+
+  <script>
+  (function(){
+    'use strict';
+
+    const DPR = window.devicePixelRatio || 1;
+    const SPEEDS = [44, 96, 190];
+    const BAND_FRAC = [0.18, 0.25, 0.32];
+    const SIZE_COLOR = { small:['#19C3FF','#0055FF'], medium:['#FF3E9E','#B00074'], large:['#FFD400','#D27C00'] };
+    const TYPE_NAMES = { small:['far1','far2'], medium:['middle1','middle2'], large:['front1','front2'] };
+    const TYPE_SPEEDS = { far1:130, far2:150, middle1:200, middle2:500, front1:270, front2:300 };
+    const HOUSE_COLORS = ['#b6c2d9','#d4dee8','#9fb7d1','#c1c8da'];
+    const SOLDIER_FRAME_MS = { small:140, medium:110, large:90 };
+    const GOTCHI_TEST_URL = 'https://gotchi.lol/api/gotchi-sprites/2729';
+    const GOTCHI_ALT_URL = 'https://gotchi.lol/api/gotchi-sprites/2731';
+    const DESERT_FAR_URL = 'https://raw.githubusercontent.com/OgnjenSK/OperationWofl/refs/heads/desertgraphics/desertfar.png';
+    const DESERT_MID_URL = 'https://raw.githubusercontent.com/OgnjenSK/OperationWofl/refs/heads/desertgraphics/desertmid.png';
+    const DESERT_FRONT_URL = 'https://raw.githubusercontent.com/OgnjenSK/OperationWofl/refs/heads/desertgraphics/desertfront.png';
+    const FAR1_SHEET_W = 100;
+    const FAR1_SHEET_H = 100;
+    const FAR1_FRAMES = 7;
+    const FAR1_ROW_FRAME_COUNTS = [6,7,3,6,4,4];
+    const FAR1_WALK_ROW = 1;
+    const FAR1_ATTACK_ROW = 3;
+    const FAR1_HURT_ROW = 4;
+    const FAR1_DEATH_ROW = 5;
+    const FAR1_FRAME_MS = 180;
+    const FAR1_WALK_FRAME_MS = 60;
+    const FAR1_DRAW_SCALE = 1.4;
+    const CROUCH_SCALE_Y = 0.7;
+    const ENEMY_Y_SHIFT = 0.10;
+    const MAX_LEVEL = 6;
+    const LEVEL_CONFIG = {
+      1:{enemies:10,spawnScale:1.0},
+      2:{enemies:14,spawnScale:0.9},
+      3:{enemies:18,spawnScale:0.8},
+      4:{enemies:22,spawnScale:0.7},
+      5:{enemies:26,spawnScale:0.6},
+      6:{enemies:30,spawnScale:0.55}
+    };
+
+    const canvas = document.getElementById('game');
+    const g = canvas.getContext('2d');
+    const menu = document.getElementById('menu');
+    const levelmap = document.getElementById('levelmap');
+    const startBtn = document.getElementById('startBtn');
+    const fade = document.getElementById('fade');
+    const hud = document.getElementById('enemyHud');
+    const missionTitle = document.getElementById('missionTitle');
+
+    let bgGradient = null;
+    let audioCtx = null;
+
+    const state = {
+      phase:'menu',
+      currentLevel:1,
+      W:0,
+      H:0,
+      last:0,
+      bands:[
+        {y:0,h:0,off:0,speed:SPEEDS[0],pattern:null,name:'Band 0',objects:[],spawnIn:200},
+        {y:0,h:0,off:0,speed:SPEEDS[1],pattern:null,name:'Band 1'},
+        {y:0,h:0,off:0,speed:SPEEDS[2],pattern:null,name:'Band 2'}
+      ],
+      soldiers:[],
+      soldierTimers:{small:6,medium:7,large:8},
+      soldierSprites:null,
+      fliers:[],
+      flyingTimer:6,
+      cross:{visible:false,x:0,y:0},
+      effects:[],
+      enemiesLeft:10,
+      spawnScale:1,
+      rafId:null,
+      showLabels:true,
+      showBaselines:true,
+      showNames:true,
+      showHitboxes:false,
+      maxHealth:10,
+      health:10
+    };
+
+    function makePattern(c1, c2){
+      const off = document.createElement('canvas');
+      off.width = 64; off.height = 64;
+      const cg = off.getContext('2d');
+      cg.fillStyle = c1; cg.fillRect(0,0,64,64);
+      cg.fillStyle = c2;
+      for(let x=0; x<64; x+=8) cg.fillRect(x,0,4,64);
+      return cg.createPattern(off, 'repeat');
+    }
+
+    function createLayerImage(url, label){
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = url;
+      img.onerror = function(){ console.warn(label + ' failed to load'); };
+      return img;
+    }
+
+    function initBackgroundImages(){
+      state.bands[0].image = createLayerImage(DESERT_FAR_URL, 'Desert far');
+      state.bands[1].image = createLayerImage(DESERT_MID_URL, 'Desert mid');
+      state.bands[2].image = createLayerImage(DESERT_FRONT_URL, 'Desert front');
+    }
+
+    function ensureAudio(){
+      if(!audioCtx){
+        try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        catch(e){ audioCtx = null; }
+      }
+      return audioCtx;
+    }
+
+    function playTone(freq, dur, gain){
+      const ctx = ensureAudio();
+      if(!ctx) return;
+      const o = ctx.createOscillator();
+      const gn = ctx.createGain();
+      o.type = 'square';
+      o.frequency.value = freq;
+      gn.gain.value = gain;
+      o.connect(gn); gn.connect(ctx.destination);
+      const t = ctx.currentTime;
+      o.start(t); o.stop(t + dur);
+      gn.gain.setValueAtTime(gain, t);
+      gn.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    }
+
+    function playShootSound(){ playTone(110, 0.14, 0.26); }
+    function playHitSound(){ playTone(55, 0.2, 0.3); }
+    function playEnemyShootSound(){ playTone(220, 0.08, 0.08); }
+
+    function getAnimRow(s){
+      if(s.dying) return s.hurtRow;
+      if(s.dead) return s.deathRow;
+      return s.shooting>0 ? s.attackRow : s.walkRow;
+    }
+
+    function getRowFrameCount(s, row){
+      if(!s.usesSheet) return s.frames.length;
+      return (s.rowFrameCounts && s.rowFrameCounts[row]) || s.framesPerRow || 1;
+    }
+
+    function getAttackAnimDuration(s){
+      if(!s.usesSheet) return 0.32;
+      const frames = getRowFrameCount(s, s.attackRow);
+      const frameMs = s.frameMs || FAR1_FRAME_MS;
+      return (frames * frameMs) / 1000;
+    }
+
+    function setHud(){ hud.textContent = 'ENEMIES: ' + state.enemiesLeft; }
+    function damagePlayer(amount){ if(state.health>0) state.health = Math.max(0, state.health - amount); }
+    function setFade(on){
+      if(on){ fade.style.pointerEvents='auto'; fade.style.opacity='1'; }
+      else { fade.style.opacity='0'; setTimeout(()=>{ fade.style.pointerEvents='none'; }, 600); }
+    }
+
+    function buildSoldierSprites(){
+      const scales = {small:8, medium:12, large:16};
+      const out = {};
+      ['small','medium','large'].forEach(sz => {
+        const [c0, c1] = SIZE_COLOR[sz];
+        out[sz] = [makeSoldierFrames(scales[sz], c0), makeSoldierFrames(scales[sz], c1)];
+      });
+
+      function makeSheetImage(url, label){
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.src = url;
+        img.onerror = function(){ console.warn(label + ' failed to load'); };
+        return img;
+      }
+
+      const sheets = {
+        base: makeSheetImage(GOTCHI_TEST_URL, 'Gotchi sprite 2729'),
+        alt: makeSheetImage(GOTCHI_ALT_URL, 'Gotchi sprite 2731')
+      };
+
+      function applySharedSheet(target, img, drawScale, laneFactor){
+        Object.assign(target, {
+          usesSheet: true,
+          sheetImg: img,
+          sheetFrameW: FAR1_SHEET_W,
+          sheetFrameH: FAR1_SHEET_H,
+          walkRow: FAR1_WALK_ROW,
+          attackRow: FAR1_ATTACK_ROW,
+          hurtRow: FAR1_HURT_ROW,
+          deathRow: FAR1_DEATH_ROW,
+          framesPerRow: FAR1_FRAMES,
+          rowFrameCounts: FAR1_ROW_FRAME_COUNTS.slice(),
+          sheetDrawScale: drawScale,
+          sheetFlip: false,
+          sheetLaneFactor: laneFactor,
+          customFrameMs: FAR1_FRAME_MS,
+          customWalkFrameMs: FAR1_WALK_FRAME_MS
+        });
+      }
+
+      [
+        ['small', 0, sheets.alt, 2, 0.10],
+        ['small', 1, sheets.base, 2, 0.10],
+        ['medium', 0, sheets.alt, 3, 0.20],
+        ['medium', 1, sheets.base, 3, 0.20],
+        ['large', 0, sheets.alt, 6, 0.50],
+        ['large', 1, sheets.base, 6, 0.50]
+      ].forEach(([size, variant, img, drawScale, laneFactor]) => {
+        applySharedSheet(out[size][variant], img, drawScale, laneFactor);
+      });
+
+      return out;
+    }
+
+    function makeSoldierFrames(scale, color){
+      const baseW=14, baseH=22;
+      const w=Math.round(baseW*scale), h=Math.round(baseH*scale);
+      const frames=[];
+      for(let f=0; f<6; f++){
+        const off=document.createElement('canvas');
+        off.width=w; off.height=h;
+        const cg=off.getContext('2d');
+        cg.imageSmoothingEnabled=false;
+        cg.scale(scale, scale);
+        cg.fillStyle=color; cg.fillRect(5,8,4,10);
+        cg.strokeStyle='#0b0b0b'; cg.lineWidth=.9; cg.strokeRect(5,8,4,10);
+        cg.fillStyle='#f2f3f5'; cg.beginPath(); cg.arc(7,5,3,0,Math.PI*2); cg.fill();
+        cg.strokeStyle='#0b0b0b'; cg.lineWidth=.9; cg.beginPath(); cg.arc(7,5,3,0,Math.PI*2); cg.stroke();
+        cg.strokeStyle='#0b0b0b'; cg.lineWidth=1.1;
+        const t=f/6*Math.PI*2, hipX=7, hipY=18, footY=22;
+        const legA=Math.sin(t), legB=Math.sin(t+Math.PI);
+        cg.beginPath();
+        cg.moveTo(hipX,hipY); cg.lineTo(hipX+3*legA, footY);
+        cg.moveTo(hipX,hipY); cg.lineTo(hipX+3*legB, footY);
+        const armA=Math.sin(t+Math.PI/2), armB=Math.sin(t+Math.PI/2+Math.PI);
+        cg.moveTo(7,10); cg.lineTo(7+4*armA,14);
+        cg.moveTo(7,10); cg.lineTo(7+4*armB,14);
+        cg.stroke();
+        frames.push(off);
+      }
+      return {frames,w,h};
+    }
+
+    function resize(){
+      const vw = innerWidth, vh = innerHeight;
+      canvas.width = vw * DPR; canvas.height = vh * DPR;
+      canvas.style.width = vw + 'px'; canvas.style.height = vh + 'px';
+      g.setTransform(DPR,0,0,DPR,0,0);
+      state.W = vw; state.H = vh;
+      let y = Math.max(0,1-(BAND_FRAC[0]+BAND_FRAC[1]+BAND_FRAC[2])) * state.H;
+      for(let i=0;i<3;i++){
+        const h = Math.floor(state.H * BAND_FRAC[i]);
+        state.bands[i].y = y; state.bands[i].h = h; y += h;
+      }
+      state.bands[0].pattern = makePattern('#f0c56a','#efc061');
+      state.bands[1].pattern = makePattern('#efbb55','#ebb24a');
+      state.bands[2].pattern = makePattern('#e4a33d','#dc9732');
+      bgGradient = g.createLinearGradient(0,0,0,state.H);
+      bgGradient.addColorStop(0,'rgba(173, 223, 255, 0.95)');
+      bgGradient.addColorStop(1,'rgba(191, 231, 255, 0.15)');
+      positionLevelArrows();
+    }
+
+    function positionLevelArrows(){
+      const wrap = document.getElementById('levelWrap');
+      if(!wrap) return;
+      const cells = [...wrap.getElementsByClassName('cell')];
+      if(cells.length<6) return;
+      const rect = wrap.getBoundingClientRect();
+      const R = cells.map(c => {
+        const r = c.getBoundingClientRect();
+        return { left:r.left-rect.left, top:r.top-rect.top, right:r.right-rect.left, bottom:r.bottom-rect.top, cx:(r.left+r.right)/2-rect.left, cy:(r.top+r.bottom)/2-rect.top };
+      });
+      const cell = {5:R[0],4:R[1],1:R[2],6:R[3],3:R[4],2:R[5]};
+      const c1=cell[1], c2=cell[2], c3=cell[3], c4=cell[4], c5=cell[5], c6=cell[6];
+      const svg=document.getElementById('levelArrows');
+      svg.setAttribute('viewBox','0 0 '+rect.width+' '+rect.height);
+      const setArrow=(id,x1,y1,x2,y2)=>{ const L=document.getElementById(id); if(L){ L.setAttribute('x1',x1); L.setAttribute('y1',y1); L.setAttribute('x2',x2); L.setAttribute('y2',y2); } };
+      const w=(c1.right-c1.left), h=(c1.bottom-c1.top), mH=0.12*w, mV=0.12*h;
+      setArrow('entry', c1.right + w*0.18, c1.cy, c1.right - mH, c1.cy);
+      const x12=(c1.cx+c2.cx)/2; setArrow('a12', x12, c1.bottom-mV, x12, c2.top+mV);
+      const y23=(c2.cy+c3.cy)/2; setArrow('a23', c2.left+mH, y23, c3.right-mH, y23);
+      const x34=(c3.cx+c4.cx)/2; setArrow('a34', x34, c3.top+mV, x34, c4.bottom-mV);
+      const y45=(c4.cy+c5.cy)/2; setArrow('a45', c4.left+mH, y45, c5.right-mH, y45);
+      const x56=(c5.cx+c6.cx)/2; setArrow('a56', x56, c5.bottom-mV, x56, c6.top+mV);
+    }
+
+    function blinkForLevel(level){
+      ['entry','a12','a23','a34','a45','a56'].forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.remove('blink-arrow'); });
+      const id = (level<=1)?'entry':(level===2?'a12':(level===3?'a23':(level===4?'a34':(level===5?'a45':'a56'))));
+      const el = document.getElementById(id); if(el) el.classList.add('blink-arrow');
+    }
+
+    function getEnemyHitbox(s){
+      let widthFactor = 0.38;
+      let heightFactor = 0.32;
+      let topFactor = 0.34;
+      if(s.size === 'small'){
+        widthFactor = 0.32;
+        heightFactor = 0.28;
+        topFactor = 0.36;
+      } else if(s.size === 'medium'){
+        widthFactor = 0.33;
+        heightFactor = 0.28;
+        topFactor = 0.36;
+      }
+      const hw = Math.round(s.w * widthFactor);
+      const hh = Math.round(s.h * heightFactor);
+      const hx = Math.round(s.x + (s.w - hw) * 0.5);
+      const hy = Math.round(s.y + s.h * topFactor);
+      return { x:hx, y:hy, w:hw, h:hh };
+    }
+
+    function markEnemyKilled(target){
+      target.dying = true;
+      target.deathTimer = 0.45;
+      target.deathSlideSpeed = Math.max(80, (target.moveSpeed || 140) * 0.6);
+      target.frame = 0;
+      target.animAcc = 0;
+      target.currentAnimRow = target.hurtRow;
+    }
+
+    function chooseHitTarget(x, y){
+      let target = null;
+      let bestFeet = -1e9;
+      state.soldiers.forEach(s => {
+        if(s.dying || s.dead) return;
+        const hb = getEnemyHitbox(s);
+        if(x>=hb.x && x<=hb.x+hb.w && y>=hb.y && y<=hb.y+hb.h){
+          const feet = s.y + s.h;
+          if(feet > bestFeet){ bestFeet = feet; target = s; }
+        }
+      });
+      if(target) return target;
+      state.fliers.forEach(f => {
+        if(x>=f.x-f.r&&x<=f.x+f.r&&y>=f.y-f.r&&y<=f.y+f.r){
+          const feet = f.y + f.r;
+          if(feet > bestFeet){ bestFeet = feet; target = f; }
+        }
+      });
+      return target;
+    }
+
+    function handleShoot(x,y){
+      playShootSound();
+      state.effects.push({type:'flash',x,y,t:0,dur:0.15});
+      const target = chooseHitTarget(x, y);
+      if(!target) return;
+      playHitSound();
+      if(target.hp!=null){
+        target.hp--;
+        if(target.hp<=0) markEnemyKilled(target);
+      } else {
+        markEnemyKilled(target);
+      }
+      state.effects.push({type:'hit',x,y,t:0,dur:0.18});
+      if(state.enemiesLeft>0){
+        state.enemiesLeft--;
+        setHud();
+        if(state.enemiesLeft===0) endLevel();
+      }
+    }
+
+    function fillBand(b){
+      const img = b.image;
+      if(img && img.complete && img.naturalWidth > 0){
+        const tileW = img.naturalWidth;
+        const offset = ((b.off % tileW) + tileW) % tileW;
+        const dy = Math.floor(b.y) - 1;
+        const dh = Math.ceil(b.h) + 2;
+        g.save();
+        for(let x = -offset; x < state.W; x += tileW){
+          g.drawImage(img, Math.round(x), dy, tileW, dh);
+        }
+        g.restore();
+        return;
+      }
+      g.save();
+      g.fillStyle=b.pattern;
+      g.translate(-b.off,0);
+      g.fillRect(0,Math.floor(b.y)-1,state.W+b.off+4,Math.ceil(b.h)+2);
+      g.restore();
+    }
+
+    function drawObjects(b){
+      b.objects.forEach(o=>{
+        g.fillStyle=o.color; g.fillRect(o.x,o.y,o.width,o.height);
+        g.strokeStyle='rgba(0,0,0,.85)'; g.lineWidth=2; g.strokeRect(o.x+0.5,o.y+0.5,o.width-1,o.height-1);
+        g.fillStyle='#1d1f27'; g.beginPath();
+        g.moveTo(o.x-12,o.y); g.lineTo(o.x+o.width/2,o.y-o.height*0.42); g.lineTo(o.x+o.width+12,o.y); g.closePath(); g.fill();
+        g.strokeStyle='rgba(0,0,0,.9)'; g.stroke();
+      });
+    }
+
+    function drawBandsAndHouses(){
+      fillBand(state.bands[0]);
+      drawObjects(state.bands[0]);
+      fillBand(state.bands[1]);
+      fillBand(state.bands[2]);
+    }
+
+    function spawnHouses(dt){
+      const b=state.bands[0];
+      b.spawnIn-=b.speed*dt;
+      if(b.spawnIn>0) return;
+      const width=200+Math.random()*200;
+      const maxH=b.h*1.3;
+      const height=Math.min(maxH,b.h*(0.5+Math.random()*0.8));
+      const base=b.y+2+Math.random()*((b.y+b.h-2)-(b.y+2));
+      const y=base-height;
+      const color=HOUSE_COLORS[(Math.random()*HOUSE_COLORS.length)|0];
+      b.objects.push({x:state.W+40,y,width,height,color});
+      b.spawnIn=500+Math.random()*700;
+    }
+
+    function updateHouses(dt){
+      const b=state.bands[0];
+      b.objects.forEach(o=>o.x-=b.speed*dt);
+      b.objects=b.objects.filter(o=>o.x+o.width>-60);
+    }
+
+    function createSoldier(size, spr, name, x, y, dir, shot){
+      const s = {
+        size,name,x,y,dir,w:spr.w,h:spr.h,
+        frames:spr.frames||null, frame:0,
+        usesSheet:!!spr.usesSheet,
+        sheetImg:spr.sheetImg||null,
+        walkRow:spr.walkRow||0,
+        attackRow:spr.attackRow||0,
+        hurtRow:spr.hurtRow||0,
+        deathRow:spr.deathRow||0,
+        framesPerRow:spr.framesPerRow||6,
+        sheetDrawScale:spr.sheetDrawScale||1,
+        sheetFlip:spr.sheetFlip==null ? true : spr.sheetFlip,
+        sheetLaneFactor:spr.sheetLaneFactor || 0,
+        rowFrameCounts:spr.rowFrameCounts ? spr.rowFrameCounts.slice() : null,
+        frameMs:spr.customFrameMs || SOLDIER_FRAME_MS[size],
+        walkFrameMs:spr.customWalkFrameMs || null,
+        animAcc:0,
+        moveSpeed:TYPE_SPEEDS[name]*1.5,
+        shooting:0,
+        nextShotIn:shot,
+        aiming:0,
+        color:SIZE_COLOR[size][TYPE_NAMES[size].indexOf(name)],
+        dead:false,
+        dying:false,
+        deathTimer:0,
+        deathSlideSpeed:0,
+        currentAnimRow:(spr.walkRow || 0)
+      };
+      if(name==='far2'){ s.rolling=false; s.rollIn=0.8+Math.random()*1.4; s.rollTime=0; }
+      if(name==='middle2'){ s.bursting=false; s.burstShotsLeft=0; s.burstGapTimer=0; }
+      return s;
+    }
+
+    function spawnOne(size){
+      const b1=state.bands[1], b2=state.bands[2];
+      const baseIn=(band,a,b)=>{ const top=band.y+band.h*a, bot=band.y+band.h*b; const min=top+2, max=Math.max(min+1,bot-2); return min+Math.random()*(max-min); };
+      let base;
+      if(size==='large') base=baseIn(b2,0.4,1);
+      else if(size==='medium') base=Math.random()<0.5?baseIn(b2,0,0.2):baseIn(b1,0.8,1);
+      else base=baseIn(b1,0,0.6);
+      const variants=state.soldierSprites[size];
+      const idx=Math.random()<0.5?0:1;
+      const spr=variants[idx];
+      const name=TYPE_NAMES[size][idx];
+      const y=base-spr.h+Math.round(spr.h*ENEMY_Y_SHIFT);
+      const dir=Math.random()<0.35?1:-1;
+      const x=dir===-1?state.W+20:-spr.w-20;
+      let shot=size==='small' ? 2.3+Math.random()*0.9 : size==='medium' ? 1.4+Math.random()*0.6 : 1.2+Math.random()*0.6;
+      if(name==='middle2') shot=0.8+Math.random()*0.5;
+      state.soldiers.push(createSoldier(size, spr, name, x, y, dir, shot));
+    }
+
+    function updateDyingSoldier(s, dt){
+      if(!s.dying) return;
+      s.deathTimer -= dt;
+      s.x -= s.dir * s.deathSlideSpeed * dt;
+      if(s.deathTimer <= 0) s.dead = true;
+    }
+
+    function updateFar2Roll(s, dt){
+      if(s.dying || s.name!=='far2') return;
+      if(s.rolling){
+        s.rollTime -= dt;
+        if(s.rollTime <= 0){
+          s.rolling = false;
+          s.rollIn = 1.6 + Math.random()*1.4;
+        }
+      } else {
+        s.rollIn -= dt;
+        if(s.rollIn <= 0){
+          s.rolling = true;
+          s.rollTime = 0.55 + Math.random()*0.35;
+        }
+      }
+    }
+
+    function triggerEnemyShot(s){
+      s.shooting = getAttackAnimDuration(s);
+      playEnemyShootSound();
+      damagePlayer(1);
+    }
+
+    function resetNextShot(s){
+      s.nextShotIn = s.size==='small' ? 2.3+Math.random()*0.9 : s.size==='medium' ? 1.4+Math.random()*0.6 : 1.2+Math.random()*0.6;
+    }
+
+    function updateMiddle2Burst(s, dt){
+      if(s.dying || s.name!=='middle2' || !s.bursting) return false;
+      if(s.shooting>0) s.shooting -= dt;
+      else if(s.burstShotsLeft>0){
+        s.burstGapTimer -= dt;
+        if(s.burstGapTimer<=0){
+          triggerEnemyShot(s);
+          s.burstShotsLeft--;
+          s.burstGapTimer = 0.07 + Math.random()*0.04;
+        }
+      } else {
+        s.bursting = false;
+        s.nextShotIn = 1.4 + Math.random()*0.8;
+      }
+      return true;
+    }
+
+    function updateStandardEnemyState(s, dt){
+      if(s.dying) return;
+      if(s.shooting>0) s.shooting -= dt;
+      else if(s.nextShotIn<=0){
+        if(s.name==='front1'){
+          s.aiming = 0.35;
+          s.nextShotIn = 1.2 + Math.random()*0.7;
+        } else if(s.name==='middle2'){
+          s.bursting = true;
+          s.burstShotsLeft = 3 + ((Math.random()*3)|0);
+          s.burstGapTimer = 0;
+          triggerEnemyShot(s);
+          s.burstShotsLeft--;
+        } else {
+          triggerEnemyShot(s);
+          resetNextShot(s);
+        }
+      } else if(s.aiming>0){
+        s.aiming -= dt;
+        if(s.aiming<=0) triggerEnemyShot(s);
+      } else {
+        let speed = s.moveSpeed;
+        if(s.name==='far2' && s.rolling) speed *= 2.0;
+        s.x += s.dir * speed * dt;
+      }
+    }
+
+    function updateSoldierAnimation(s, dt){
+      const animRowNow = getAnimRow(s);
+      if(s.usesSheet && s.currentAnimRow !== animRowNow){
+        s.currentAnimRow = animRowNow;
+        s.frame = 0;
+        s.animAcc = 0;
+      }
+      const animFrameMs = (s.usesSheet && s.walkFrameMs && s.aiming<=0 && s.shooting<=0 && !s.dying && !s.dead) ? s.walkFrameMs : s.frameMs;
+      s.animAcc += dt*1000;
+      if(s.animAcc >= animFrameMs){
+        s.animAcc -= animFrameMs;
+        const frameCount = s.usesSheet ? getRowFrameCount(s, getAnimRow(s)) : s.frames.length;
+        s.frame = (s.frame + 1) % frameCount;
+      }
+    }
+
+    function tickSoldierSpawnTimer(size, dt, base, variance){
+      const T = state.soldierTimers;
+      const scale = state.spawnScale || 1;
+      T[size] -= dt;
+      if(T[size] <= 0){
+        spawnOne(size);
+        T[size] = (base + Math.random()*variance) * scale;
+      }
+    }
+
+    function updateSoldiers(dt){
+      tickSoldierSpawnTimer('small', dt, 6, 4);
+      tickSoldierSpawnTimer('medium', dt, 7, 5);
+      tickSoldierSpawnTimer('large', dt, 8, 6);
+
+      state.soldiers.forEach(s=>{
+        updateDyingSoldier(s, dt);
+        s.nextShotIn -= dt;
+
+        const currentAnimRow = getAnimRow(s);
+        if(s.usesSheet){
+          const rowLimit = getRowFrameCount(s, currentAnimRow);
+          if(s.frame >= rowLimit) s.frame = 0;
+        }
+
+        updateFar2Roll(s, dt);
+        if(!updateMiddle2Burst(s, dt)) updateStandardEnemyState(s, dt);
+        updateSoldierAnimation(s, dt);
+      });
+
+      state.soldiers = state.soldiers.filter(s=>!s.dead && (s.dir===-1 ? (s.x+s.w>-40) : (s.x<state.W+40)));
+    }
+
+    function spawnFlier(){
+      const side = (Math.random()*3)|0;
+      const r = 60;
+      const speed = 180 + Math.random()*120;
+      let x, y, vx, vy;
+      const startY = Math.random()*state.H*0.35 + 10;
+      if(side===0){ x=-40; y=startY; vx=speed; vy=40-80*Math.random(); }
+      else if(side===1){ x=state.W+40; y=startY; vx=-speed; vy=40-80*Math.random(); }
+      else { x=Math.random()*state.W; y=-40; vx=80-160*Math.random(); vy=speed; }
+      state.fliers.push({x,y,vx,vy,r,hp:5,turnIn:3.0+Math.random()*3.0,shoot:0,dead:false});
+    }
+
+    function updateFliers(dt){
+      state.flyingTimer -= dt;
+      if(state.flyingTimer<=0){
+        if(state.fliers.length===0){
+          spawnFlier();
+          state.flyingTimer = 6 + Math.random()*6;
+        } else {
+          state.flyingTimer = 1.5;
+        }
+      }
+      state.fliers.forEach(f=>{
+        if(f.dead) return;
+        f.turnIn -= dt;
+        if(f.turnIn<=0){
+          const tx = state.cross.x || state.W/2;
+          const maxTY = state.H*0.3;
+          const ty = Math.min(state.cross.y || state.H/3, maxTY);
+          const dx = tx - f.x, dy = ty - f.y;
+          const len = Math.max(1, Math.hypot(dx,dy));
+          const sp = Math.hypot(f.vx,f.vy);
+          f.vx = (dx/len)*sp;
+          f.vy = (dy/len)*sp;
+          f.turnIn = 3.0 + Math.random()*3.0;
+          f.shoot = 0.3;
+        }
+        if(f.shoot>0){
+          f.shoot -= dt;
+          if(f.shoot<=0){
+            state.effects.push({type:'flash',x:f.x+Math.sign(f.vx)*f.r,y:f.y,t:0,dur:0.12});
+            damagePlayer(1);
+          }
+        }
+        f.x += f.vx*dt;
+        f.y += f.vy*dt;
+        const yMax = state.H*0.33;
+        if(f.y>yMax){ f.y=yMax; if(f.vy>0) f.vy=-Math.abs(f.vy)*0.6; }
+      });
+      state.fliers = state.fliers.filter(f=>!f.dead && f.x>-80 && f.x<state.W+80 && f.y>-80 && f.y<state.H+80);
+    }
+
+    function drawSoldiers(){
+      if(!state.soldiers.length) return;
+      state.soldiers.sort((a,b)=>(a.y+a.h)-(b.y+b.h));
+      state.soldiers.forEach(s=>{
+        const fr = s.frames ? s.frames[s.frame] : null;
+        const isCrouch=(s.name==='front1'&&(s.aiming>0||s.shooting>0));
+        const isRoll=(s.name==='far2'&&s.rolling);
+        if(s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth>0){
+          const row = getAnimRow(s);
+          if(s.frame >= getRowFrameCount(s, row)) s.frame = 0;
+          const srcW = s.sheetFrameW || FAR1_SHEET_W;
+          const srcH = s.sheetFrameH || FAR1_SHEET_H;
+          const sx = s.frame * srcW, sy = row * srcH;
+          const drawW = Math.round(srcW * s.sheetDrawScale), drawH = Math.round(srcH * s.sheetDrawScale);
+          const dx=Math.round(s.x + (s.w-drawW)*0.5);
+          const lanePush = Math.round(Math.max(0, drawH - s.h) * (s.sheetLaneFactor || 0));
+          const dy=Math.round(s.y + (s.h-drawH) + lanePush);
+          const shouldFlip = s.sheetFlip ? (s.dir===1) : (s.dir!==1);
+          if(shouldFlip){
+            g.save(); g.translate(dx+drawW,0); g.scale(-1,1); g.drawImage(s.sheetImg,sx,sy,srcW,srcH,0,dy,drawW,drawH); g.restore();
+          } else {
+            g.drawImage(s.sheetImg,sx,sy,srcW,srcH,dx,dy,drawW,drawH);
+          }
+        } else if(isRoll){
+          const cx=s.x+s.w*0.5, cy=s.y+s.h*0.8, r=Math.min(s.w,s.h)*0.45;
+          g.save(); g.fillStyle=s.color||'#FFD400'; g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.fill(); g.strokeStyle='rgba(0,0,0,0.9)'; g.lineWidth=2; g.beginPath(); g.arc(cx,cy,r,0,Math.PI*2); g.stroke(); g.restore();
+        } else if(isCrouch){
+          const yBase=s.y+s.h, yPrime=yBase-s.h*CROUCH_SCALE_Y;
+          g.save();
+          if(s.dir===1){ g.translate(s.x+s.w,yPrime); g.scale(-1,CROUCH_SCALE_Y); g.drawImage(fr,0,0); }
+          else { g.translate(s.x,yPrime); g.scale(1,CROUCH_SCALE_Y); g.drawImage(fr,0,0); }
+          g.restore();
+        } else if(fr){
+          if(s.dir===1){ g.save(); g.translate(s.x+s.w,0); g.scale(-1,1); g.drawImage(fr,0,s.y); g.restore(); }
+          else g.drawImage(fr,s.x,s.y);
+        }
+
+        if(state.showNames){
+          let label=s.name; if(s.name==='far2'&&s.rolling) label+='[roll]'; if(s.name==='middle2'&&s.bursting) label+='[burst]';
+          g.save(); g.font='bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; g.textBaseline='bottom';
+          const tx=s.x+2, ty=s.y-2, wtxt=g.measureText(label).width+6;
+          g.fillStyle='rgba(0,0,0,.7)'; g.fillRect(tx-2,ty-14,wtxt,14); g.fillStyle='#fff'; g.fillText(label,tx,ty-2); g.restore();
+        }
+        if(state.showHitboxes){
+          const hb = getEnemyHitbox(s);
+          g.save();
+          g.strokeStyle='rgba(0,255,255,0.9)';
+          g.lineWidth=2;
+          g.strokeRect(hb.x+0.5, hb.y+0.5, hb.w-1, hb.h-1);
+          g.restore();
+        }
+      });
+    }
+
+    function drawFliers(){
+      state.fliers.forEach(f=>{
+        const size=f.r*1.4;
+        g.save(); g.translate(f.x,f.y); g.fillStyle='#9ef0ff'; g.fillRect(-size/2,-size/2,size,size); g.strokeStyle='#0b0b0b'; g.lineWidth=2; g.strokeRect(-size/2,-size/2,size,size); g.restore();
+        if(state.showNames){ g.save(); g.fillStyle='#fff'; g.font='bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial'; g.fillText('helicopter('+f.hp+')',f.x-size/2,f.y-size/2-8); g.restore(); }
+      });
+    }
+
+    function drawHealth(){
+      const max=state.maxHealth||10, cur=state.health!=null?state.health:max;
+      const barWidth=10, barHeight=20, gap=4, baseX=10, y=state.H-barHeight-8;
+      for(let i=0;i<max;i++){
+        const x=baseX+i*(barWidth+gap);
+        g.save(); g.fillStyle=i<cur?'#4cff8a':'rgba(0,0,0,0.4)'; g.fillRect(x,y,barWidth,barHeight); g.strokeStyle='#000'; g.lineWidth=1; g.strokeRect(x+0.5,y+0.5,barWidth-1,barHeight-1); g.restore();
+      }
+    }
+
+    function drawBaselines(){
+      if(!state.showBaselines) return;
+      const b0=state.bands[0];
+      g.save(); g.strokeStyle='rgba(255,80,80,0.9)'; g.lineWidth=1; g.beginPath(); g.moveTo(0,b0.y); g.lineTo(state.W,b0.y); g.moveTo(0,b0.y+b0.h); g.lineTo(state.W,b0.y+b0.h); g.stroke(); g.restore();
+    }
+
+    function drawBandLabels(){
+      if(!state.showLabels) return;
+      g.save(); g.font='14px system-ui,-apple-system,Segoe UI,Roboto,Arial'; g.textBaseline='top'; g.lineWidth=1;
+      state.bands.forEach((b,i)=>{
+        g.fillStyle=['rgba(255,0,0,0.12)','rgba(0,255,0,0.12)','rgba(0,128,255,0.12)'][i];
+        g.fillRect(0,b.y,state.W,b.h);
+        g.strokeStyle=['rgba(255,0,0,0.7)','rgba(0,255,0,0.7)','rgba(0,128,255,0.7)'][i];
+        g.strokeRect(0,b.y,state.W,b.h);
+        const label=b.name+' • y:'+(b.y|0)+' h:'+(b.h|0)+' • speed:'+b.speed;
+        const pad=6, tw=g.measureText(label).width+pad*2, th=20;
+        g.fillStyle='rgba(0,0,0,0.55)'; g.fillRect(8,b.y+8,tw,th);
+        g.strokeStyle='rgba(255,255,255,0.25)'; g.strokeRect(8,b.y+8,tw,th);
+        g.fillStyle='#fff'; g.fillText(label,8+pad,b.y+10);
+      });
+      g.restore();
+    }
+
+    function drawBgTop(){
+      if(!bgGradient){ bgGradient=g.createLinearGradient(0,0,0,state.H); bgGradient.addColorStop(0,'rgba(173, 223, 255, 0.95)'); bgGradient.addColorStop(1,'rgba(191, 231, 255, 0.15)'); }
+      g.fillStyle=bgGradient; g.fillRect(0,0,state.W,state.H);
+    }
+
+    function drawCross(){
+      if(!state.cross.visible) return;
+      const c=state.cross, L=18, gap=5;
+      g.save(); g.lineCap='round'; g.strokeStyle='rgba(0,0,0,.7)'; g.lineWidth=4; g.beginPath(); g.moveTo(c.x-L,c.y); g.lineTo(c.x-gap,c.y); g.moveTo(c.x+gap,c.y); g.lineTo(c.x+L,c.y); g.moveTo(c.x,c.y-L); g.lineTo(c.x,c.y-gap); g.moveTo(c.x,c.y+gap); g.lineTo(c.x,c.y+L); g.stroke();
+      g.strokeStyle='rgba(255,255,255,.96)'; g.lineWidth=2; g.beginPath(); g.moveTo(c.x-L,c.y); g.lineTo(c.x-gap,c.y); g.moveTo(c.x+gap,c.y); g.lineTo(c.x+L,c.y); g.moveTo(c.x,c.y-L); g.lineTo(c.x,c.y-gap); g.moveTo(c.x,c.y+gap); g.lineTo(c.x,c.y+L); g.stroke();
+      g.fillStyle='rgba(255,255,255,.9)'; g.beginPath(); g.arc(c.x,c.y,2.5,0,Math.PI*2); g.fill(); g.restore();
+    }
+
+    function updateEffects(dt){ state.effects.forEach(e=>e.t+=dt); state.effects=state.effects.filter(e=>e.t<e.dur); }
+
+    function drawEffects(){
+      state.effects.forEach(e=>{
+        const p=e.dur>0?Math.min(1,e.t/e.dur):1;
+        if(e.type==='flash'){
+          const r1=6+22*p;
+          g.save(); g.globalAlpha=1-p; g.fillStyle='rgba(255,255,220,.95)'; g.beginPath(); g.arc(e.x,e.y,r1*0.6,0,Math.PI*2); g.fill(); g.strokeStyle='rgba(255,220,120,.9)'; g.lineWidth=2+2*(1-p); g.beginPath(); g.arc(e.x,e.y,r1,0,Math.PI*2); g.stroke(); g.restore();
+        } else if(e.type==='hit'){
+          const R=8+28*(1-p);
+          g.save(); g.globalAlpha=1-p*0.9; g.fillStyle='rgba(255,230,160,.9)'; g.beginPath(); g.arc(e.x,e.y,4*(1-p),0,Math.PI*2); g.fill(); g.strokeStyle='rgba(255,200,80,.85)'; g.lineWidth=2; g.beginPath(); for(let i=0;i<8;i++){ const a=i/8*Math.PI*2; g.moveTo(e.x,e.y); g.lineTo(e.x+Math.cos(a)*R,e.y+Math.sin(a)*R); } g.stroke(); g.restore();
+        }
+      });
+    }
+
+    function update(dt){
+      state.bands.forEach(b=>{
+        b.off += b.speed * dt;
+        const tileW = (b.image && b.image.complete && b.image.naturalWidth > 0) ? b.image.naturalWidth : 512;
+        if(b.off >= tileW) b.off -= tileW;
+      });
+      if(state.phase==='play'){
+        updateHouses(dt);
+        spawnHouses(dt);
+        updateSoldiers(dt);
+        updateFliers(dt);
+      }
+      updateEffects(dt);
+    }
+
+    function render(){
+      g.clearRect(0,0,state.W,state.H);
+      drawBandsAndHouses();
+      drawSoldiers();
+      drawFliers();
+      drawBaselines();
+      drawBandLabels();
+      drawBgTop();
+      drawHealth();
+      drawEffects();
+      drawCross();
+    }
+
+    function loop(t){
+      if(!state.last) state.last=t;
+      const dt=Math.min(0.05,(t-state.last)/1000);
+      state.last=t;
+      update(dt);
+      render();
+      state.rafId=requestAnimationFrame(loop);
+    }
+
+    function startLoop(){ if(state.rafId==null) state.rafId=requestAnimationFrame(loop); }
+    function stopLoop(){ if(state.rafId!=null){ cancelAnimationFrame(state.rafId); state.rafId=null; } }
+    function updateMissionTitle(){ missionTitle.textContent='Start Mission '+state.currentLevel; }
+
+    function resetSpawnTimers(){
+      const scale=state.spawnScale||1;
+      state.soldierTimers.small=(6+Math.random()*4)*scale;
+      state.soldierTimers.medium=(7+Math.random()*5)*scale;
+      state.soldierTimers.large=(8+Math.random()*6)*scale;
+      state.flyingTimer=6+Math.random()*6;
+    }
+
+    function configureLevel(lvl){
+      const cfg=LEVEL_CONFIG[lvl]||LEVEL_CONFIG[1];
+      state.enemiesLeft=cfg.enemies;
+      state.spawnScale=cfg.spawnScale;
+      state.health=state.maxHealth;
+      state.soldiers.length=0;
+      state.fliers.length=0;
+      state.effects.length=0;
+      if(state.bands[0]&&state.bands[0].objects) state.bands[0].objects.length=0;
+      resetSpawnTimers();
+      setHud();
+      updateMissionTitle();
+    }
+
+    function goToLevelMap(){
+      state.phase='map';
+      stopLoop();
+      setFade(true);
+      setTimeout(()=>{
+        menu.style.display='none';
+        levelmap.style.display='flex';
+        levelmap.style.opacity='1';
+        positionLevelArrows();
+        blinkForLevel(state.currentLevel);
+        setFade(false);
+        setTimeout(startGame,3200);
+      },400);
+    }
+
+    function startGame(){
+      setFade(true);
+      setTimeout(()=>{
+        levelmap.style.opacity='0';
+        levelmap.style.display='none';
+        state.phase='play';
+        state.last=0;
+        configureLevel(state.currentLevel);
+        startLoop();
+        setFade(false);
+      },300);
+    }
+
+    function endLevel(){
+      state.phase='map';
+      stopLoop();
+      setFade(true);
+      setTimeout(()=>{
+        state.currentLevel=Math.min(MAX_LEVEL,state.currentLevel+1);
+        configureLevel(state.currentLevel);
+        levelmap.style.display='flex';
+        levelmap.style.opacity='1';
+        positionLevelArrows();
+        blinkForLevel(state.currentLevel);
+        setFade(false);
+        setTimeout(startGame,3200);
+      },600);
+    }
+
+    startBtn.onclick=goToLevelMap;addEventListener('resize',resize);canvas.onmouseenter=()=>{state.cross.visible=true;canvas.style.cursor='none';document.body.style.cursor='none'};canvas.onmouseleave=()=>{state.cross.visible=false;canvas.style.cursor='';document.body.style.cursor=''};canvas.onmousemove=e=>{const r=canvas.getBoundingClientRect();state.cross.x=e.clientX-r.left;state.cross.y=e.clientY-r.top};canvas.onmousedown=e=>{const r=canvas.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;state.cross.x=x;state.cross.y=y;handleShoot(x,y)};canvas.oncontextmenu=e=>e.preventDefault();addEventListener('keydown',e=>{const k=e.key.toLowerCase();if(k==='l')state.showLabels=!state.showLabels;else if(k==='b')state.showBaselines=!state.showBaselines;else if(k==='n')state.showNames=!state.showNames;else if(k==='h')state.showHitboxes=!state.showHitboxes});state.soldierSprites=buildSoldierSprites();initBackgroundImages();resize();setHud();render()})();</script></body></html>
