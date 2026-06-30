@@ -12,3 +12,5 @@ Thumbs.db
 # Editor (keep shared launch/tasks; ignore personal settings)
 .vscode/settings.json
 .vscode/*.code-workspace
+.vscode/dev-server.log
+.vscode/dev-server.pid

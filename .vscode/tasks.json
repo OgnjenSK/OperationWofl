@@ -8,21 +8,11 @@
       "options": {
         "cwd": "${workspaceFolder}"
       },
-      "isBackground": true,
-      "problemMatcher": {
-        "owner": "custom",
-        "pattern": {
-          "regexp": "^$"
-        },
-        "background": {
-          "activeOnStart": true,
-          "beginsPattern": ".",
-          "endsPattern": "Serving HTTP on :: ready"
-        }
-      },
+      "problemMatcher": [],
       "presentation": {
         "reveal": "silent",
-        "panel": "dedicated"
+        "panel": "shared",
+        "close": true
       }
     },
     {
@@ -39,6 +29,15 @@
         "reveal": "never",
         "panel": "shared"
       }
+    },
+    {
+      "label": "Stop local server",
+      "type": "shell",
+      "command": "if [ -f .vscode/dev-server.pid ]; then kill \"$(cat .vscode/dev-server.pid)\" 2>/dev/null || true; rm -f .vscode/dev-server.pid; fi",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
     }
   ]
 }
