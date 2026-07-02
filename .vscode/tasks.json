@@ -20,7 +20,7 @@
       "dependsOn": ["Start local server"],
       "dependsOrder": "sequence",
       "type": "shell",
-      "command": "open 'http://127.0.0.1:8080/Operation%20Wofl.html'",
+      "command": "open 'http://127.0.0.1:8080/index.html'",
       "options": {
         "cwd": "${workspaceFolder}"
       },

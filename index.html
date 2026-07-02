@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aavegotchi Wofl — Repaired Main Build</title>
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <div id="fade"></div>
+  <div id="menu">
+    <div id="menuHeader">
+      <div id="menuTitle">Aavegotchi Wofl</div>
+      <div id="menuSub">Click Start to play</div>
+    </div>
+    <button id="startBtn">Start Game</button>
+  </div>
+
+  <div id="levelmap">
+    <div id="levelWrap">
+      <div id="missionTitleBox">
+        <div id="missionTitle">Start Mission 1</div>
+        <div id="missionSub">get ready to free some prisoners.</div>
+      </div>
+      <div class="cell bg5"><span>5</span></div>
+      <div class="cell bg4"><span>4</span></div>
+      <div class="cell bg3"><span>1</span></div>
+      <div class="cell bg6"><span>6</span></div>
+      <div class="cell bg2"><span>3</span></div>
+      <div class="cell bg1"><span>2</span></div>
+      <svg id="levelArrows" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <defs>
+          <marker id="arrowHead" markerWidth="26" markerHeight="26" refX="0" refY="13" orient="auto" markerUnits="userSpaceOnUse" overflow="visible">
+            <path d="M0,0 L26,13 L0,26 Z" fill="context-stroke" />
+          </marker>
+        </defs>
+        <line id="entry" class="arrow blink-arrow" marker-end="url(#arrowHead)" />
+        <line id="a12" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a23" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a34" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a45" class="arrow" marker-end="url(#arrowHead)" />
+        <line id="a56" class="arrow" marker-end="url(#arrowHead)" />
+      </svg>
+    </div>
+  </div>
+
+  <div class="legend">Layer Markings ON — press L / B / N / H</div>
+  <div class="hud" id="enemyHud">ENEMIES: 10</div>
+  <canvas id="game"></canvas>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

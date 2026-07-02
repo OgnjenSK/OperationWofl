@@ -1,0 +1,187 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  background: #bfe7ff;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  image-rendering: pixelated;
+  cursor: none;
+}
+
+#fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .6s ease;
+  z-index: 30;
+}
+
+#menu, #levelmap {
+  user-select: none;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  color: #fff;
+}
+
+#menu {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: linear-gradient(180deg, #10151c, #05070b);
+  z-index: 20;
+  opacity: 1;
+  transition: opacity .6s;
+}
+
+#menuHeader {
+  text-align: center;
+}
+
+#menuTitle {
+  font-size: 48px;
+  font-weight: 900;
+  letter-spacing: .5px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .55);
+}
+
+#menuSub {
+  opacity: .75;
+  font-size: 14px;
+}
+
+#startBtn {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: 700;
+  border-radius: 12px;
+  border: 0;
+  background: #6d7ea6;
+  color: #fff;
+  box-shadow: 0 6px 18px rgba(109, 126, 166, .4);
+  cursor: pointer;
+}
+
+#levelmap {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: min(10vh, 80px);
+  background: rgba(5, 7, 10, .96);
+  z-index: 10;
+  opacity: 0;
+  transition: opacity .6s;
+}
+
+#levelWrap {
+  width: min(84vw, 1000px);
+  height: min(66vh, 560px);
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 18px;
+  padding: 18px;
+  background: linear-gradient(180deg, #0f141c, #080b11);
+  border-radius: 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, .6);
+}
+
+.cell {
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cell span {
+  position: absolute;
+  left: 10px;
+  top: 8px;
+  opacity: .75;
+  font-weight: 800;
+}
+
+.bg1 { background: linear-gradient(135deg, #263447, #3c506b); }
+.bg2 { background: linear-gradient(135deg, #2c3c2f, #456a4c); }
+.bg3 { background: linear-gradient(135deg, #4b2f2f, #7a4545); }
+.bg4 { background: linear-gradient(135deg, #3b2f4b, #634c7a); }
+.bg5 { background: linear-gradient(135deg, #2f474b, #4c787a); }
+.bg6 { background: linear-gradient(135deg, #4b472f, #7a7145); }
+
+#missionTitleBox {
+  position: absolute;
+  top: -70px;
+  left: 0;
+  right: 0;
+  text-align: center;
+  pointer-events: none;
+}
+
+#missionTitle {
+  font-weight: 900;
+  font-size: 28px;
+  color: #ffd400;
+  letter-spacing: .5px;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, .45);
+}
+
+#missionSub {
+  margin-top: 6px;
+  font-weight: 600;
+  font-size: 15px;
+  color: #dbe6ff;
+  opacity: .9;
+}
+
+svg#levelArrows {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: visible;
+}
+
+@keyframes blinkStroke {
+  0%, 45% { stroke: #FFD400; }
+  50%, 100% { stroke: #FF4040; }
+}
+
+.blink-arrow {
+  animation: blinkStroke .16s steps(1, end) infinite;
+}
+
+.arrow {
+  stroke: #FFD400;
+  stroke-width: 16;
+  stroke-linecap: butt;
+  stroke-linejoin: round;
+}
+
+.legend {
+  position: fixed;
+  right: 10px;
+  top: 10px;
+  color: #fff;
+  font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  opacity: .85;
+  z-index: 5;
+}
+
+.hud {
+  position: fixed;
+  left: 10px;
+  bottom: 32px;
+  color: #fff;
+  font: 16px system-ui, -apple-system, Segoe UI, Roboto, Arial;
+  z-index: 5;
+}

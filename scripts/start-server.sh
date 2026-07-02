@@ -2,7 +2,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-GAME_URL='http://127.0.0.1:8080/Operation%20Wofl.html'
+GAME_URL='http://127.0.0.1:8080/index.html'
 ASSET_URL='http://127.0.0.1:8080/assets/backgrounds/desert/desertfar.png'
 PID_FILE='.vscode/dev-server.pid'
 LOG_FILE='.vscode/dev-server.log'
