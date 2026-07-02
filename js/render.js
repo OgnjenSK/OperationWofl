@@ -5,7 +5,7 @@ import { g, state } from './state.js';
 import { getBgGradient } from './background.js';
 import { drawBandsAndHouses } from './background.js';
 import { getAnimRow, getRowFrameCount } from './sprites.js';
-import { getEnemyHitbox } from './enemies.js';
+import { getEnemyHitbox, getEnemyBounds } from './enemies.js';
 
 export function drawSoldiers() {
   if (!state.soldiers.length) return;
@@ -72,6 +72,14 @@ export function drawSoldiers() {
       g.fillText(label, tx, ty - 2);
       g.restore();
     }
+    if (state.showBoundingBoxes) {
+      const bb = getEnemyBounds(s);
+      g.save();
+      g.strokeStyle = 'rgba(255, 64, 255, 0.9)';
+      g.lineWidth = 2;
+      g.strokeRect(bb.x + 0.5, bb.y + 0.5, bb.w - 1, bb.h - 1);
+      g.restore();
+    }
     if (state.showHitboxes) {
       const hb = getEnemyHitbox(s);
       g.save();
@@ -101,6 +109,13 @@ export function drawFliers() {
       g.fillText('helicopter(' + f.hp + ')', f.x - size / 2, f.y - size / 2 - 8);
       g.restore();
     }
+    if (state.showBoundingBoxes) {
+      g.save();
+      g.strokeStyle = 'rgba(255, 64, 255, 0.9)';
+      g.lineWidth = 2;
+      g.strokeRect(f.x - size / 2 + 0.5, f.y - size / 2 + 0.5, size - 1, size - 1);
+      g.restore();
+    }
   });
 }
 
@@ -117,21 +132,6 @@ function drawHealth() {
     g.strokeRect(x + 0.5, y + 0.5, barWidth - 1, barHeight - 1);
     g.restore();
   }
-}
-
-function drawBaselines() {
-  if (!state.showBaselines) return;
-  const b0 = state.bands[0];
-  g.save();
-  g.strokeStyle = 'rgba(255,80,80,0.9)';
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(0, b0.y);
-  g.lineTo(state.W, b0.y);
-  g.moveTo(0, b0.y + b0.h);
-  g.lineTo(state.W, b0.y + b0.h);
-  g.stroke();
-  g.restore();
 }
 
 function drawBandLabels() {
@@ -245,7 +245,6 @@ export function render() {
   drawBandsAndHouses();
   drawSoldiers();
   drawFliers();
-  drawBaselines();
   drawBandLabels();
   drawBgTop();
   drawHealth();

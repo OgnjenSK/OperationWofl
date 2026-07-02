@@ -122,7 +122,7 @@ function init() {
   addEventListener('keydown', e => {
     const k = e.key.toLowerCase();
     if (k === 'l') state.showLabels = !state.showLabels;
-    else if (k === 'b') state.showBaselines = !state.showBaselines;
+    else if (k === 'b') state.showBoundingBoxes = !state.showBoundingBoxes;
     else if (k === 'n') state.showNames = !state.showNames;
     else if (k === 'h') state.showHitboxes = !state.showHitboxes;
   });

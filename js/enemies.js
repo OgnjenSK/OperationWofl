@@ -1,6 +1,7 @@
 import {
   SIZE_COLOR, TYPE_NAMES, TYPE_SPEEDS, ENEMY_Y_SHIFT,
-  LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS
+  LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS,
+  CROUCH_SCALE_Y, FAR1_SHEET_W, FAR1_SHEET_H
 } from './config.js';
 import { state } from './state.js';
 import { playShootSound, playHitSound, playEnemyShootSound } from './audio.js';
@@ -33,6 +34,31 @@ export function getEnemyHitbox(s) {
   const hx = Math.round(s.x + (s.w - hw) * 0.5);
   const hy = Math.round(s.y + s.h * topFactor);
   return { x: hx, y: hy, w: hw, h: hh };
+}
+
+export function getEnemyBounds(s) {
+  if (s.usesSheet) {
+    const srcW = s.sheetFrameW || FAR1_SHEET_W;
+    const srcH = s.sheetFrameH || FAR1_SHEET_H;
+    const drawW = Math.round(srcW * s.sheetDrawScale);
+    const drawH = Math.round(srcH * s.sheetDrawScale);
+    const dx = Math.round(s.x + (s.w - drawW) * 0.5);
+    const lanePush = Math.round(Math.max(0, drawH - s.h) * (s.sheetLaneFactor || 0));
+    const dy = Math.round(s.y + (s.h - drawH) + lanePush);
+    return { x: dx, y: dy, w: drawW, h: drawH };
+  }
+  if (s.name === 'far2' && s.rolling) {
+    const cx = s.x + s.w * 0.5;
+    const cy = s.y + s.h * 0.8;
+    const r = Math.min(s.w, s.h) * 0.45;
+    return { x: cx - r, y: cy - r, w: r * 2, h: r * 2 };
+  }
+  const isCrouch = s.name === 'front1' && (s.aiming > 0 || s.shooting > 0);
+  if (isCrouch) {
+    const yPrime = s.y + s.h - s.h * CROUCH_SCALE_Y;
+    return { x: s.x, y: yPrime, w: s.w, h: Math.round(s.h * CROUCH_SCALE_Y) };
+  }
+  return { x: s.x, y: s.y, w: s.w, h: s.h };
 }
 
 function markEnemyKilled(target) {

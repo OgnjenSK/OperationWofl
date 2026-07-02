@@ -33,8 +33,8 @@ export const state = {
   spawnScale: 1,
   rafId: null,
   showLabels: true,
-  showBaselines: true,
   showNames: true,
+  showBoundingBoxes: false,
   showHitboxes: false,
   maxHealth: 10,
   health: 10
