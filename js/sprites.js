@@ -1,5 +1,6 @@
 import {
   SIZE_COLOR, TYPE_NAMES, GOTCHI_TEST_URL, GOTCHI_ALT_URL,
+  GOTCHI_TEST_FRONT_URL, GOTCHI_ALT_FRONT_URL, GOTCHI_FRONT_LAYOUT,
   FAR1_SHEET_W, FAR1_SHEET_H, FAR1_FRAMES, FAR1_ROW_FRAME_COUNTS,
   FAR1_WALK_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
   FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, SOLDIER_FRAME_MS
@@ -85,14 +86,20 @@ export function buildSoldierSprites() {
   }
 
   const sheets = {
-    base: makeSheetImage(GOTCHI_TEST_URL, 'Gotchi sprite 2729'),
-    alt: makeSheetImage(GOTCHI_ALT_URL, 'Gotchi sprite 2731')
+    base: makeSheetImage(GOTCHI_TEST_URL, 'Quickswap Dragon'),
+    alt: makeSheetImage(GOTCHI_ALT_URL, 'Desert basic')
+  };
+  const fronts = {
+    base: makeSheetImage(GOTCHI_TEST_FRONT_URL, 'Quickswap Dragon front'),
+    alt: makeSheetImage(GOTCHI_ALT_FRONT_URL, 'Desert basic front')
   };
 
-  function applySharedSheet(target, img, drawScale, laneFactor) {
+  function applySharedSheet(target, img, frontImg, frontLayout, drawScale, laneFactor) {
     Object.assign(target, {
       usesSheet: true,
       sheetImg: img,
+      frontImg,
+      frontLayout,
       sheetFrameW: FAR1_SHEET_W,
       sheetFrameH: FAR1_SHEET_H,
       walkRow: FAR1_WALK_ROW,
@@ -110,15 +117,33 @@ export function buildSoldierSprites() {
   }
 
   [
-    ['small', 0, sheets.alt, 2, 0.10],
-    ['small', 1, sheets.base, 2, 0.10],
-    ['medium', 0, sheets.alt, 3, 0.20],
-    ['medium', 1, sheets.base, 3, 0.20],
-    ['large', 0, sheets.alt, 6, 0.50],
-    ['large', 1, sheets.base, 6, 0.50]
-  ].forEach(([size, variant, img, drawScale, laneFactor]) => {
-    applySharedSheet(out[size][variant], img, drawScale, laneFactor);
+    ['small', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 2, 0.10],
+    ['small', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 2, 0.10],
+    ['medium', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 3, 0.20],
+    ['medium', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 3, 0.20],
+    ['large', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 6, 0.50],
+    ['large', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 6, 0.50]
+  ].forEach(([size, variant, img, frontImg, frontLayout, drawScale, laneFactor]) => {
+    applySharedSheet(out[size][variant], img, frontImg, frontLayout, drawScale, laneFactor);
   });
+
+  const flierScale = 2.4;
+  out.flier = {
+    usesSheet: true,
+    sheetImg: sheets.base,
+    frontImg: fronts.base,
+    frontLayout: GOTCHI_FRONT_LAYOUT.base,
+    sheetFrameW: FAR1_SHEET_W,
+    sheetFrameH: FAR1_SHEET_H,
+    walkRow: FAR1_WALK_ROW,
+    framesPerRow: FAR1_FRAMES,
+    rowFrameCounts: FAR1_ROW_FRAME_COUNTS.slice(),
+    sheetDrawScale: flierScale,
+    sheetFlip: false,
+    frameMs: FAR1_WALK_FRAME_MS,
+    w: Math.round(FAR1_SHEET_W * flierScale),
+    h: Math.round(FAR1_SHEET_H * flierScale)
+  };
 
   return out;
 }

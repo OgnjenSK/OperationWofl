@@ -18,8 +18,29 @@ export const TYPE_SPEEDS = {
 };
 export const HOUSE_COLORS = ['#b6c2d9', '#d4dee8', '#9fb7d1', '#c1c8da'];
 export const SOLDIER_FRAME_MS = { small: 140, medium: 110, large: 90 };
-export const GOTCHI_TEST_URL = 'https://gotchi.lol/api/gotchi-sprites/2729';
-export const GOTCHI_ALT_URL = 'https://gotchi.lol/api/gotchi-sprites/2731';
+// Quickswap Dragon (amWMATIC + Dragon Wings + Dragon Horns + Fireball) — variant 1 on each lane
+export const GOTCHI_TEST_URL = 'assets/gotchis/quickswap-dragon.png';
+// Desert basic Gotchi — variant 0 on each lane
+export const GOTCHI_ALT_URL = 'assets/gotchis/desert-basic.png';
+export const GOTCHI_TEST_FRONT_URL = 'assets/gotchis/quickswap-dragon-front.png';
+export const GOTCHI_ALT_FRONT_URL = 'assets/gotchis/desert-basic-front.png';
+// Match front pose visual size to side-sheet walk content (measured opaque pixels).
+export const GOTCHI_FRONT_LAYOUT = {
+  base: {
+    imgSize: 256,
+    contentH: 208,
+    contentBottom: 219,
+    walkContentH: 36,
+    walkFeetY: 68
+  },
+  alt: {
+    imgSize: 256,
+    contentH: 196,
+    contentBottom: 219,
+    walkContentH: 31,
+    walkFeetY: 68
+  }
+};
 export const DESERT_FAR_URL = 'assets/backgrounds/desert/desertfar.png';
 export const DESERT_MID_URL = 'assets/backgrounds/desert/desertmid.png';
 export const DESERT_FRONT_URL = 'assets/backgrounds/desert/desertfront.png';

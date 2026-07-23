@@ -7,14 +7,51 @@ import { drawBandsAndHouses } from './background.js';
 import { getAnimRow, getRowFrameCount } from './sprites.js';
 import { getEnemyHitbox, getEnemyBounds } from './enemies.js';
 
+function getFrontAttackDrawLayout(s) {
+  const srcW = s.sheetFrameW || FAR1_SHEET_W;
+  const srcH = s.sheetFrameH || FAR1_SHEET_H;
+  const scale = s.sheetDrawScale || 1;
+  const sideDrawW = Math.round(srcW * scale);
+  const sideDrawH = Math.round(srcH * scale);
+  const lanePush = Math.round(Math.max(0, sideDrawH - s.h) * (s.sheetLaneFactor || 0));
+  const sideDx = Math.round(s.x + (s.w - sideDrawW) * 0.5);
+  const sideDy = Math.round(s.y + (s.h - sideDrawH) + lanePush);
+
+  const layout = s.frontLayout;
+  if (!layout) {
+    return { dx: sideDx, dy: sideDy, drawW: sideDrawW, drawH: sideDrawH };
+  }
+
+  // Scale so opaque front height matches opaque side-walk height on screen.
+  const drawH = Math.round(layout.imgSize * layout.walkContentH * scale / layout.contentH);
+  const drawW = drawH;
+  const sideFeetY = sideDy + layout.walkFeetY * scale;
+  const dx = Math.round(s.x + (s.w - drawW) * 0.5);
+  const dy = Math.round(sideFeetY - (layout.contentBottom / layout.imgSize) * drawH);
+  return { dx, dy, drawW, drawH };
+}
+
+function isFrontAttackPose(s) {
+  return !!(s.frontImg && (s.shooting > 0 || s.aiming > 0) && !s.dying && !s.dead);
+}
+
 export function drawSoldiers() {
   if (!state.soldiers.length) return;
   state.soldiers.sort((a, b) => (a.y + a.h) - (b.y + b.h));
+  g.save();
+  g.imageSmoothingEnabled = false;
   state.soldiers.forEach(s => {
     const fr = s.frames ? s.frames[s.frame] : null;
     const isCrouch = (s.name === 'front1' && (s.aiming > 0 || s.shooting > 0));
     const isRoll = (s.name === 'far2' && s.rolling);
-    if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
+    if (
+      isFrontAttackPose(s) &&
+      s.frontImg.complete &&
+      s.frontImg.naturalWidth > 0
+    ) {
+      const { dx, dy, drawW, drawH } = getFrontAttackDrawLayout(s);
+      g.drawImage(s.frontImg, 0, 0, s.frontImg.naturalWidth, s.frontImg.naturalHeight, dx, dy, drawW, drawH);
+    } else if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
       const row = getAnimRow(s);
       if (s.frame >= getRowFrameCount(s, row)) s.frame = 0;
       const srcW = s.sheetFrameW || FAR1_SHEET_W;
@@ -27,6 +64,7 @@ export function drawSoldiers() {
       const shouldFlip = s.sheetFlip ? (s.dir === 1) : (s.dir !== 1);
       if (shouldFlip) {
         g.save();
+        g.imageSmoothingEnabled = false;
         g.translate(dx + drawW, 0);
         g.scale(-1, 1);
         g.drawImage(s.sheetImg, sx, sy, srcW, srcH, 0, dy, drawW, drawH);
@@ -50,12 +88,19 @@ export function drawSoldiers() {
     } else if (isCrouch) {
       const yBase = s.y + s.h, yPrime = yBase - s.h * CROUCH_SCALE_Y;
       g.save();
+      g.imageSmoothingEnabled = false;
       if (s.dir === 1) { g.translate(s.x + s.w, yPrime); g.scale(-1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
       else { g.translate(s.x, yPrime); g.scale(1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
       g.restore();
     } else if (fr) {
-      if (s.dir === 1) { g.save(); g.translate(s.x + s.w, 0); g.scale(-1, 1); g.drawImage(fr, 0, s.y); g.restore(); }
-      else g.drawImage(fr, s.x, s.y);
+      if (s.dir === 1) {
+        g.save();
+        g.imageSmoothingEnabled = false;
+        g.translate(s.x + s.w, 0);
+        g.scale(-1, 1);
+        g.drawImage(fr, 0, s.y);
+        g.restore();
+      } else g.drawImage(fr, s.x, s.y);
     }
 
     if (state.showNames) {
@@ -89,31 +134,83 @@ export function drawSoldiers() {
       g.restore();
     }
   });
+  g.restore();
 }
 
 export function drawFliers() {
   state.fliers.forEach(f => {
-    const size = f.r * 1.4;
+    const shooting = f.shoot > 0;
+    const drawW = Math.round((f.sheetFrameW || FAR1_SHEET_W) * (f.sheetDrawScale || 2.4));
+    const drawH = Math.round((f.sheetFrameH || FAR1_SHEET_H) * (f.sheetDrawScale || 2.4));
+    let dx = Math.round(f.x - drawW * 0.5);
+    let dy = Math.round(f.y - drawH * 0.5);
+
     g.save();
-    g.translate(f.x, f.y);
-    g.fillStyle = '#9ef0ff';
-    g.fillRect(-size / 2, -size / 2, size, size);
-    g.strokeStyle = '#0b0b0b';
-    g.lineWidth = 2;
-    g.strokeRect(-size / 2, -size / 2, size, size);
+    g.imageSmoothingEnabled = false;
+
+    if (
+      shooting &&
+      f.frontImg &&
+      f.frontImg.complete &&
+      f.frontImg.naturalWidth > 0 &&
+      f.frontLayout
+    ) {
+      const layout = f.frontLayout;
+      const scale = f.sheetDrawScale || 2.4;
+      const frontH = Math.round(layout.imgSize * layout.walkContentH * scale / layout.contentH);
+      const frontW = frontH;
+      dx = Math.round(f.x - frontW * 0.5);
+      dy = Math.round(f.y - frontH * 0.5);
+      g.drawImage(f.frontImg, 0, 0, f.frontImg.naturalWidth, f.frontImg.naturalHeight, dx, dy, frontW, frontH);
+    } else if (f.usesSheet && f.sheetImg && f.sheetImg.complete && f.sheetImg.naturalWidth > 0) {
+      const srcW = f.sheetFrameW || FAR1_SHEET_W;
+      const srcH = f.sheetFrameH || FAR1_SHEET_H;
+      const row = f.walkRow || 1;
+      const frameCount = (f.rowFrameCounts && f.rowFrameCounts[row]) || f.framesPerRow || 7;
+      const frame = (f.frame || 0) % frameCount;
+      const sx = frame * srcW;
+      const sy = row * srcH;
+      const faceRight = f.vx >= 0;
+      const shouldFlip = f.sheetFlip ? faceRight : !faceRight;
+      if (shouldFlip) {
+        g.translate(dx + drawW, dy);
+        g.scale(-1, 1);
+        g.drawImage(f.sheetImg, sx, sy, srcW, srcH, 0, 0, drawW, drawH);
+      } else {
+        g.drawImage(f.sheetImg, sx, sy, srcW, srcH, dx, dy, drawW, drawH);
+      }
+    } else {
+      const size = f.r * 1.4;
+      g.translate(f.x, f.y);
+      g.fillStyle = '#9ef0ff';
+      g.fillRect(-size / 2, -size / 2, size, size);
+      g.strokeStyle = '#0b0b0b';
+      g.lineWidth = 2;
+      g.strokeRect(-size / 2, -size / 2, size, size);
+    }
     g.restore();
+
     if (state.showNames) {
       g.save();
       g.fillStyle = '#fff';
       g.font = 'bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
-      g.fillText('helicopter(' + f.hp + ')', f.x - size / 2, f.y - size / 2 - 8);
+      g.fillText((f.name || 'dragon') + '(' + f.hp + ')', f.x - drawW * 0.5, f.y - drawH * 0.5 - 8);
       g.restore();
     }
     if (state.showBoundingBoxes) {
       g.save();
       g.strokeStyle = 'rgba(255, 64, 255, 0.9)';
       g.lineWidth = 2;
-      g.strokeRect(f.x - size / 2 + 0.5, f.y - size / 2 + 0.5, size - 1, size - 1);
+      g.strokeRect(dx + 0.5, dy + 0.5, drawW - 1, drawH - 1);
+      g.restore();
+    }
+    if (state.showHitboxes) {
+      g.save();
+      g.strokeStyle = 'rgba(0,255,255,0.9)';
+      g.lineWidth = 2;
+      g.beginPath();
+      g.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+      g.stroke();
       g.restore();
     }
   });
@@ -216,6 +313,38 @@ function drawEffects() {
       g.lineWidth = 2 + 2 * (1 - p);
       g.beginPath();
       g.arc(e.x, e.y, r1, 0, Math.PI * 2);
+      g.stroke();
+      g.restore();
+    } else if (e.type === 'muzzle') {
+      const sc = e.scale || 1;
+      const fade = 1 - p;
+      const core = (10 + 18 * (1 - p)) * sc;
+      const ring = (16 + 34 * p) * sc;
+      g.save();
+      g.globalAlpha = fade;
+      g.fillStyle = 'rgba(255,255,255,0.95)';
+      g.beginPath();
+      g.arc(e.x, e.y, core * 0.35, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = 'rgba(255,230,120,0.9)';
+      g.beginPath();
+      g.arc(e.x, e.y, core * 0.7, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(255,160,40,0.95)';
+      g.lineWidth = (2.5 + 2 * fade) * sc;
+      g.beginPath();
+      g.arc(e.x, e.y, ring * 0.55, 0, Math.PI * 2);
+      g.stroke();
+      g.strokeStyle = 'rgba(255,220,160,0.85)';
+      g.lineWidth = (1.5 + fade) * sc;
+      g.beginPath();
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + p * 0.4;
+        const inner = core * 0.5;
+        const outer = ring;
+        g.moveTo(e.x + Math.cos(a) * inner, e.y + Math.sin(a) * inner);
+        g.lineTo(e.x + Math.cos(a) * outer, e.y + Math.sin(a) * outer);
+      }
       g.stroke();
       g.restore();
     } else if (e.type === 'hit') {

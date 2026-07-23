@@ -38,6 +38,22 @@ export function getEnemyHitbox(s) {
 
 export function getEnemyBounds(s) {
   if (s.usesSheet) {
+    const usingFront = !!(s.frontImg && (s.shooting > 0 || s.aiming > 0) && !s.dying && !s.dead);
+    if (usingFront && s.frontLayout) {
+      const srcW = s.sheetFrameW || FAR1_SHEET_W;
+      const srcH = s.sheetFrameH || FAR1_SHEET_H;
+      const scale = s.sheetDrawScale || 1;
+      const sideDrawH = Math.round(srcH * scale);
+      const lanePush = Math.round(Math.max(0, sideDrawH - s.h) * (s.sheetLaneFactor || 0));
+      const sideDy = Math.round(s.y + (s.h - sideDrawH) + lanePush);
+      const layout = s.frontLayout;
+      const drawH = Math.round(layout.imgSize * layout.walkContentH * scale / layout.contentH);
+      const drawW = drawH;
+      const sideFeetY = sideDy + layout.walkFeetY * scale;
+      const dx = Math.round(s.x + (s.w - drawW) * 0.5);
+      const dy = Math.round(sideFeetY - (layout.contentBottom / layout.imgSize) * drawH);
+      return { x: dx, y: dy, w: drawW, h: drawH };
+    }
     const srcW = s.sheetFrameW || FAR1_SHEET_W;
     const srcH = s.sheetFrameH || FAR1_SHEET_H;
     const drawW = Math.round(srcW * s.sheetDrawScale);
@@ -117,6 +133,8 @@ function createSoldier(size, spr, name, x, y, dir, shot) {
     frames: spr.frames || null, frame: 0,
     usesSheet: !!spr.usesSheet,
     sheetImg: spr.sheetImg || null,
+    frontImg: spr.frontImg || null,
+    frontLayout: spr.frontLayout || null,
     walkRow: spr.walkRow || 0,
     attackRow: spr.attackRow || 0,
     hurtRow: spr.hurtRow || 0,
@@ -196,6 +214,15 @@ function triggerEnemyShot(s) {
   s.shooting = getAttackAnimDuration(s);
   playEnemyShootSound();
   damagePlayer(1);
+  spawnEnemyMuzzleFlash(s);
+}
+
+function spawnEnemyMuzzleFlash(s) {
+  const bb = getEnemyBounds(s);
+  const x = bb.x + bb.w * 0.5;
+  const y = bb.y + bb.h * 0.38;
+  const scale = s.size === 'large' ? 1.7 : s.size === 'medium' ? 1.25 : 0.95;
+  state.effects.push({ type: 'muzzle', x, y, t: 0, dur: 0.18, scale });
 }
 
 function resetNextShot(s) {
@@ -280,15 +307,38 @@ export function updateSoldiers(dt) {
 }
 
 function spawnFlier() {
+  const spr = state.soldierSprites && state.soldierSprites.flier;
   const side = (Math.random() * 3) | 0;
-  const r = 60;
+  const r = spr ? Math.round(Math.min(spr.w, spr.h) * 0.28) : 60;
   const speed = 180 + Math.random() * 120;
   let x, y, vx, vy;
   const startY = Math.random() * state.H * 0.35 + 10;
   if (side === 0) { x = -40; y = startY; vx = speed; vy = 40 - 80 * Math.random(); }
   else if (side === 1) { x = state.W + 40; y = startY; vx = -speed; vy = 40 - 80 * Math.random(); }
   else { x = Math.random() * state.W; y = -40; vx = 80 - 160 * Math.random(); vy = speed; }
-  state.fliers.push({ x, y, vx, vy, r, hp: 5, turnIn: 3.0 + Math.random() * 3.0, shoot: 0, dead: false });
+  state.fliers.push({
+    x, y, vx, vy, r, hp: 5,
+    turnIn: 3.0 + Math.random() * 3.0,
+    shoot: 0,
+    dead: false,
+    name: 'dragon',
+    usesSheet: !!(spr && spr.usesSheet),
+    sheetImg: spr ? spr.sheetImg : null,
+    frontImg: spr ? spr.frontImg : null,
+    frontLayout: spr ? spr.frontLayout : null,
+    sheetFrameW: spr ? spr.sheetFrameW : FAR1_SHEET_W,
+    sheetFrameH: spr ? spr.sheetFrameH : FAR1_SHEET_H,
+    walkRow: spr ? spr.walkRow : 1,
+    framesPerRow: spr ? spr.framesPerRow : 7,
+    rowFrameCounts: spr && spr.rowFrameCounts ? spr.rowFrameCounts.slice() : null,
+    sheetDrawScale: spr ? spr.sheetDrawScale : 2.4,
+    sheetFlip: false,
+    w: spr ? spr.w : 120,
+    h: spr ? spr.h : 120,
+    frame: 0,
+    animAcc: 0,
+    frameMs: spr ? spr.frameMs : 60
+  });
 }
 
 export function updateFliers(dt) {
@@ -319,9 +369,24 @@ export function updateFliers(dt) {
     if (f.shoot > 0) {
       f.shoot -= dt;
       if (f.shoot <= 0) {
-        state.effects.push({ type: 'flash', x: f.x + Math.sign(f.vx) * f.r, y: f.y, t: 0, dur: 0.12 });
+        state.effects.push({
+          type: 'muzzle',
+          x: f.x,
+          y: f.y + f.r * 0.15,
+          t: 0,
+          dur: 0.16,
+          scale: 1.3
+        });
         damagePlayer(1);
       }
+    }
+    f.animAcc = (f.animAcc || 0) + dt * 1000;
+    const frameMs = f.frameMs || 60;
+    if (f.animAcc >= frameMs) {
+      f.animAcc -= frameMs;
+      const row = f.walkRow || 1;
+      const frameCount = (f.rowFrameCounts && f.rowFrameCounts[row]) || f.framesPerRow || 7;
+      f.frame = ((f.frame || 0) + 1) % frameCount;
     }
     f.x += f.vx * dt;
     f.y += f.vy * dt;

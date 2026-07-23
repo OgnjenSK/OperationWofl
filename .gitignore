@@ -9,6 +9,12 @@ Thumbs.db
 # Logs
 *.log
 
+# Node (sprite generator tool)
+tools/aavegotchi-game-sprites/node_modules/
+
+# On-chain SVG cache (PNG fronts are kept)
+assets/gotchis/*-front.svg
+
 # Editor (keep shared launch/tasks; ignore personal settings)
 .vscode/settings.json
 .vscode/*.code-workspace
