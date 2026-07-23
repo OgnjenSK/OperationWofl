@@ -43,18 +43,21 @@ function loop(t) {
 }
 
 function goToLevelMap() {
-  state.phase = 'map';
+  // Skip map intro for now — go straight into level 1.
+  state.currentLevel = 1;
+  state.phase = 'play';
   stopLoop();
   setFade(true);
   setTimeout(() => {
     menu.style.display = 'none';
-    levelmap.style.display = 'flex';
-    levelmap.style.opacity = '1';
-    positionLevelArrows();
-    blinkForLevel(state.currentLevel);
+    levelmap.style.display = 'none';
+    levelmap.style.opacity = '0';
+    state.last = 0;
+    configureLevel(state.currentLevel);
+    updateMissionTitle();
+    startLoop();
     setFade(false);
-    setTimeout(startGame, 3200);
-  }, 400);
+  }, 300);
 }
 
 function startGame() {
@@ -132,6 +135,9 @@ function init() {
   resize();
   setHud();
   render();
+
+  // Skip start menu for now — jump straight into level 1.
+  goToLevelMap();
 }
 
 init();

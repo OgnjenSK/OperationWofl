@@ -32,7 +32,7 @@ export const state = {
   enemiesLeft: 10,
   spawnScale: 1,
   rafId: null,
-  showLabels: true,
+  showLabels: false,
   showNames: true,
   showBoundingBoxes: false,
   showHitboxes: false,
