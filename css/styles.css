@@ -6,6 +6,8 @@ html, body {
 }
 
 canvas {
+  position: relative;
+  z-index: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -79,7 +81,8 @@ canvas {
   justify-content: center;
   padding-bottom: min(10vh, 80px);
   background: rgba(5, 7, 10, .96);
-  z-index: 10;
+  /* Above canvas and fade so the map is actually visible */
+  z-index: 40;
   opacity: 0;
   transition: opacity .6s;
 }

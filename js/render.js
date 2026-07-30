@@ -7,34 +7,6 @@ import { drawBandsAndHouses } from './background.js';
 import { getAnimRow, getRowFrameCount } from './sprites.js';
 import { getEnemyHitbox, getEnemyBounds } from './enemies.js';
 
-function getFrontAttackDrawLayout(s) {
-  const srcW = s.sheetFrameW || FAR1_SHEET_W;
-  const srcH = s.sheetFrameH || FAR1_SHEET_H;
-  const scale = s.sheetDrawScale || 1;
-  const sideDrawW = Math.round(srcW * scale);
-  const sideDrawH = Math.round(srcH * scale);
-  const lanePush = Math.round(Math.max(0, sideDrawH - s.h) * (s.sheetLaneFactor || 0));
-  const sideDx = Math.round(s.x + (s.w - sideDrawW) * 0.5);
-  const sideDy = Math.round(s.y + (s.h - sideDrawH) + lanePush);
-
-  const layout = s.frontLayout;
-  if (!layout) {
-    return { dx: sideDx, dy: sideDy, drawW: sideDrawW, drawH: sideDrawH };
-  }
-
-  // Scale so opaque front height matches opaque side-walk height on screen.
-  const drawH = Math.round(layout.imgSize * layout.walkContentH * scale / layout.contentH);
-  const drawW = drawH;
-  const sideFeetY = sideDy + layout.walkFeetY * scale;
-  const dx = Math.round(s.x + (s.w - drawW) * 0.5);
-  const dy = Math.round(sideFeetY - (layout.contentBottom / layout.imgSize) * drawH);
-  return { dx, dy, drawW, drawH };
-}
-
-function isFrontAttackPose(s) {
-  return !!(s.frontImg && (s.shooting > 0 || s.aiming > 0) && !s.dying && !s.dead);
-}
-
 export function drawSoldiers() {
   if (!state.soldiers.length) return;
   state.soldiers.sort((a, b) => (a.y + a.h) - (b.y + b.h));
@@ -44,19 +16,22 @@ export function drawSoldiers() {
     const fr = s.frames ? s.frames[s.frame] : null;
     const isCrouch = (s.name === 'front1' && (s.aiming > 0 || s.shooting > 0));
     const isRoll = (s.name === 'far2' && s.rolling);
-    if (
-      isFrontAttackPose(s) &&
-      s.frontImg.complete &&
-      s.frontImg.naturalWidth > 0
-    ) {
-      const { dx, dy, drawW, drawH } = getFrontAttackDrawLayout(s);
-      g.drawImage(s.frontImg, 0, 0, s.frontImg.naturalWidth, s.frontImg.naturalHeight, dx, dy, drawW, drawH);
-    } else if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
-      const row = getAnimRow(s);
-      if (s.frame >= getRowFrameCount(s, row)) s.frame = 0;
+    if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
+      const row = (s.dying || s.dead) ? s.hurtRow : getAnimRow(s);
+      const rowLimit = getRowFrameCount(s, row);
+      // Never wrap to frame 0 while dying — that flashed a different hit frame at the end.
+      let frame = s.frame;
+      if (s.dying || s.dead) {
+        const hold = (s.deathHoldFrame != null) ? s.deathHoldFrame : Math.max(0, rowLimit - 1);
+        frame = Math.min(Math.max(0, frame), hold);
+        s.frame = frame;
+      } else if (frame >= rowLimit) {
+        frame = 0;
+        s.frame = 0;
+      }
       const srcW = s.sheetFrameW || FAR1_SHEET_W;
       const srcH = s.sheetFrameH || FAR1_SHEET_H;
-      const sx = s.frame * srcW, sy = row * srcH;
+      const sx = frame * srcW, sy = row * srcH;
       const drawW = Math.round(srcW * s.sheetDrawScale), drawH = Math.round(srcH * s.sheetDrawScale);
       const dx = Math.round(s.x + (s.w - drawW) * 0.5);
       const lanePush = Math.round(Math.max(0, drawH - s.h) * (s.sheetLaneFactor || 0));
@@ -139,33 +114,18 @@ export function drawSoldiers() {
 
 export function drawFliers() {
   state.fliers.forEach(f => {
-    const shooting = f.shoot > 0;
     const drawW = Math.round((f.sheetFrameW || FAR1_SHEET_W) * (f.sheetDrawScale || 2.4));
     const drawH = Math.round((f.sheetFrameH || FAR1_SHEET_H) * (f.sheetDrawScale || 2.4));
-    let dx = Math.round(f.x - drawW * 0.5);
-    let dy = Math.round(f.y - drawH * 0.5);
+    const dx = Math.round(f.x - drawW * 0.5);
+    const dy = Math.round(f.y - drawH * 0.5);
 
     g.save();
     g.imageSmoothingEnabled = false;
 
-    if (
-      shooting &&
-      f.frontImg &&
-      f.frontImg.complete &&
-      f.frontImg.naturalWidth > 0 &&
-      f.frontLayout
-    ) {
-      const layout = f.frontLayout;
-      const scale = f.sheetDrawScale || 2.4;
-      const frontH = Math.round(layout.imgSize * layout.walkContentH * scale / layout.contentH);
-      const frontW = frontH;
-      dx = Math.round(f.x - frontW * 0.5);
-      dy = Math.round(f.y - frontH * 0.5);
-      g.drawImage(f.frontImg, 0, 0, f.frontImg.naturalWidth, f.frontImg.naturalHeight, dx, dy, frontW, frontH);
-    } else if (f.usesSheet && f.sheetImg && f.sheetImg.complete && f.sheetImg.naturalWidth > 0) {
+    if (f.usesSheet && f.sheetImg && f.sheetImg.complete && f.sheetImg.naturalWidth > 0) {
       const srcW = f.sheetFrameW || FAR1_SHEET_W;
       const srcH = f.sheetFrameH || FAR1_SHEET_H;
-      const row = f.walkRow || 1;
+      const row = ((f.shoot > 0 || f.bursting) && f.attackRow != null) ? f.attackRow : (f.walkRow || 1);
       const frameCount = (f.rowFrameCounts && f.rowFrameCounts[row]) || f.framesPerRow || 7;
       const frame = (f.frame || 0) % frameCount;
       const sx = frame * srcW;

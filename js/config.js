@@ -18,29 +18,10 @@ export const TYPE_SPEEDS = {
 };
 export const HOUSE_COLORS = ['#b6c2d9', '#d4dee8', '#9fb7d1', '#c1c8da'];
 export const SOLDIER_FRAME_MS = { small: 140, medium: 110, large: 90 };
-// Quickswap Dragon (amWMATIC + Dragon Wings + Dragon Horns + Fireball) — variant 1 on each lane
+// Quickswap Dragon (amWMATIC + Dragon Wings + Dragon Horns + dual Fireballs) — variant 1 on each lane
 export const GOTCHI_TEST_URL = 'assets/gotchis/quickswap-dragon.png';
 // Desert basic Gotchi — variant 0 on each lane
 export const GOTCHI_ALT_URL = 'assets/gotchis/desert-basic.png';
-export const GOTCHI_TEST_FRONT_URL = 'assets/gotchis/quickswap-dragon-front.png';
-export const GOTCHI_ALT_FRONT_URL = 'assets/gotchis/desert-basic-front.png';
-// Match front pose visual size to side-sheet walk content (measured opaque pixels).
-export const GOTCHI_FRONT_LAYOUT = {
-  base: {
-    imgSize: 256,
-    contentH: 208,
-    contentBottom: 219,
-    walkContentH: 36,
-    walkFeetY: 68
-  },
-  alt: {
-    imgSize: 256,
-    contentH: 196,
-    contentBottom: 219,
-    walkContentH: 31,
-    walkFeetY: 68
-  }
-};
 export const DESERT_FAR_URL = 'assets/backgrounds/desert/desertfar.png';
 export const DESERT_MID_URL = 'assets/backgrounds/desert/desertmid.png';
 export const DESERT_FRONT_URL = 'assets/backgrounds/desert/desertfront.png';
@@ -52,8 +33,10 @@ export const FAR1_WALK_ROW = 1;
 export const FAR1_ATTACK_ROW = 3;
 export const FAR1_HURT_ROW = 4;
 export const FAR1_DEATH_ROW = 5;
-export const FAR1_FRAME_MS = 180;
+export const FAR1_FRAME_MS = 60;
 export const FAR1_WALK_FRAME_MS = 60;
+// Hit/death keeps a slower pace than attack/walk (60), but not the old 180.
+export const FAR1_HURT_FRAME_MS = 90;
 export const FAR1_DRAW_SCALE = 1.4;
 export const CROUCH_SCALE_Y = 0.7;
 export const ENEMY_Y_SHIFT = 0.10;

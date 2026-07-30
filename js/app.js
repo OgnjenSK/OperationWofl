@@ -42,11 +42,44 @@ function loop(t) {
   state.rafId = requestAnimationFrame(loop);
 }
 
+let mapStartTimer = null;
+let mapShowTimer = null;
+
+function clearMapTimers() {
+  if (mapShowTimer != null) { clearTimeout(mapShowTimer); mapShowTimer = null; }
+  if (mapStartTimer != null) { clearTimeout(mapStartTimer); mapStartTimer = null; }
+}
+
+function showLevelMap(thenStart) {
+  state.phase = 'map';
+  stopLoop();
+  clearMapTimers();
+  mapShowTimer = setTimeout(() => {
+    mapShowTimer = null;
+    menu.style.display = 'none';
+    // Show map immediately — no opacity fade (avoids flashing the bright canvas).
+    levelmap.style.transition = 'none';
+    levelmap.style.display = 'flex';
+    levelmap.style.opacity = '1';
+    void levelmap.offsetWidth;
+    levelmap.style.transition = '';
+    updateMissionTitle();
+    positionLevelArrows();
+    blinkForLevel(state.currentLevel);
+    if (thenStart) {
+      mapStartTimer = setTimeout(() => {
+        mapStartTimer = null;
+        startGame();
+      }, 3200);
+    }
+  }, 0);
+}
+
 function goToLevelMap() {
-  // Skip map intro for now — go straight into level 1.
-  state.currentLevel = 1;
+  // Skip map intro — go straight into the current level.
   state.phase = 'play';
   stopLoop();
+  clearMapTimers();
   setFade(true);
   setTimeout(() => {
     menu.style.display = 'none';
@@ -61,6 +94,7 @@ function goToLevelMap() {
 }
 
 function startGame() {
+  clearMapTimers();
   setFade(true);
   setTimeout(() => {
     levelmap.style.opacity = '0';
@@ -75,20 +109,9 @@ function startGame() {
 }
 
 function endLevel() {
-  state.phase = 'map';
-  stopLoop();
-  setFade(true);
-  setTimeout(() => {
-    state.currentLevel = Math.min(MAX_LEVEL, state.currentLevel + 1);
-    configureLevel(state.currentLevel);
-    updateMissionTitle();
-    levelmap.style.display = 'flex';
-    levelmap.style.opacity = '1';
-    positionLevelArrows();
-    blinkForLevel(state.currentLevel);
-    setFade(false);
-    setTimeout(startGame, 3200);
-  }, 600);
+  state.currentLevel = Math.min(MAX_LEVEL, state.currentLevel + 1);
+  configureLevel(state.currentLevel);
+  showLevelMap(true);
 }
 
 function init() {
@@ -136,7 +159,7 @@ function init() {
   setHud();
   render();
 
-  // Skip start menu for now — jump straight into level 1.
+  // Skip start/level menus — jump straight into play.
   goToLevelMap();
 }
 

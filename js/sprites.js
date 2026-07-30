@@ -1,15 +1,15 @@
 import {
   SIZE_COLOR, TYPE_NAMES, GOTCHI_TEST_URL, GOTCHI_ALT_URL,
-  GOTCHI_TEST_FRONT_URL, GOTCHI_ALT_FRONT_URL, GOTCHI_FRONT_LAYOUT,
   FAR1_SHEET_W, FAR1_SHEET_H, FAR1_FRAMES, FAR1_ROW_FRAME_COUNTS,
   FAR1_WALK_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
-  FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, SOLDIER_FRAME_MS
+  FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, FAR1_HURT_FRAME_MS
 } from './config.js';
 
 export function getAnimRow(s) {
-  if (s.dying) return s.hurtRow;
-  if (s.dead) return s.deathRow;
-  return s.shooting > 0 ? s.attackRow : s.walkRow;
+  // Keep hurt/hit row for the whole death sequence (including last-frame hold).
+  if (s.dying || s.dead) return s.hurtRow;
+  if (s.shooting > 0 || s.bursting) return s.attackRow;
+  return s.walkRow;
 }
 
 export function getRowFrameCount(s, row) {
@@ -89,17 +89,11 @@ export function buildSoldierSprites() {
     base: makeSheetImage(GOTCHI_TEST_URL, 'Quickswap Dragon'),
     alt: makeSheetImage(GOTCHI_ALT_URL, 'Desert basic')
   };
-  const fronts = {
-    base: makeSheetImage(GOTCHI_TEST_FRONT_URL, 'Quickswap Dragon front'),
-    alt: makeSheetImage(GOTCHI_ALT_FRONT_URL, 'Desert basic front')
-  };
 
-  function applySharedSheet(target, img, frontImg, frontLayout, drawScale, laneFactor) {
+  function applySharedSheet(target, img, drawScale, laneFactor) {
     Object.assign(target, {
       usesSheet: true,
       sheetImg: img,
-      frontImg,
-      frontLayout,
       sheetFrameW: FAR1_SHEET_W,
       sheetFrameH: FAR1_SHEET_H,
       walkRow: FAR1_WALK_ROW,
@@ -117,25 +111,24 @@ export function buildSoldierSprites() {
   }
 
   [
-    ['small', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 2, 0.10],
-    ['small', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 2, 0.10],
-    ['medium', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 3, 0.20],
-    ['medium', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 3, 0.20],
-    ['large', 0, sheets.alt, fronts.alt, GOTCHI_FRONT_LAYOUT.alt, 6, 0.50],
-    ['large', 1, sheets.base, fronts.base, GOTCHI_FRONT_LAYOUT.base, 6, 0.50]
-  ].forEach(([size, variant, img, frontImg, frontLayout, drawScale, laneFactor]) => {
-    applySharedSheet(out[size][variant], img, frontImg, frontLayout, drawScale, laneFactor);
+    ['small', 0, sheets.alt, 2, 0.10],
+    ['small', 1, sheets.base, 2, 0.10],
+    ['medium', 0, sheets.alt, 3, 0.20],
+    ['medium', 1, sheets.base, 3, 0.20],
+    ['large', 0, sheets.alt, 6, 0.50],
+    ['large', 1, sheets.base, 6, 0.50]
+  ].forEach(([size, variant, img, drawScale, laneFactor]) => {
+    applySharedSheet(out[size][variant], img, drawScale, laneFactor);
   });
 
   const flierScale = 2.4;
   out.flier = {
     usesSheet: true,
     sheetImg: sheets.base,
-    frontImg: fronts.base,
-    frontLayout: GOTCHI_FRONT_LAYOUT.base,
     sheetFrameW: FAR1_SHEET_W,
     sheetFrameH: FAR1_SHEET_H,
     walkRow: FAR1_WALK_ROW,
+    attackRow: FAR1_ATTACK_ROW,
     framesPerRow: FAR1_FRAMES,
     rowFrameCounts: FAR1_ROW_FRAME_COUNTS.slice(),
     sheetDrawScale: flierScale,
@@ -149,13 +142,30 @@ export function buildSoldierSprites() {
 }
 
 export function updateSoldierAnimation(s, dt) {
+  // Death: play hurt row once, then hard-lock the last hit frame until removal.
+  // Do not run the normal row-switch reset — that was snapping back to frame 0.
+  if (s.dying || s.dead) {
+    const hold = (s.deathHoldFrame != null)
+      ? s.deathHoldFrame
+      : Math.max(0, getRowFrameCount(s, s.hurtRow) - 1);
+    s.currentAnimRow = s.hurtRow;
+    s.animAcc += dt * 1000;
+    while (s.animAcc >= FAR1_HURT_FRAME_MS) {
+      s.animAcc -= FAR1_HURT_FRAME_MS;
+      if (s.frame < hold) s.frame += 1;
+      else break;
+    }
+    if (s.frame > hold) s.frame = hold;
+    return;
+  }
+
   const animRowNow = getAnimRow(s);
   if (s.usesSheet && s.currentAnimRow !== animRowNow) {
     s.currentAnimRow = animRowNow;
     s.frame = 0;
     s.animAcc = 0;
   }
-  const animFrameMs = (s.usesSheet && s.walkFrameMs && s.aiming <= 0 && s.shooting <= 0 && !s.dying && !s.dead)
+  const animFrameMs = (s.usesSheet && s.walkFrameMs && s.aiming <= 0 && s.shooting <= 0 && !s.bursting)
     ? s.walkFrameMs
     : s.frameMs;
   s.animAcc += dt * 1000;
