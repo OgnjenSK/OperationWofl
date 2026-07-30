@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Anim Viewer</title>
+  <style>
+    :root {
+      --bg: #12151c;
+      --panel: #1b2130;
+      --text: #e8ecf4;
+      --muted: #9aa3b5;
+      --accent: #6ee7ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(1200px 600px at 50% 0%, #1e2740, var(--bg));
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    }
+    .card {
+      width: min(920px, 94vw);
+      background: var(--panel);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+    }
+    h1 { margin: 0 0 6px; font-size: 20px; font-weight: 650; }
+    p { margin: 0 0 18px; color: var(--muted); font-size: 14px; }
+    .nav { margin-bottom: 12px; font-size: 13px; }
+    .nav a { color: var(--accent); text-decoration: none; }
+    .stage-wrap {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 720px) {
+      .stage-wrap { grid-template-columns: 1fr; }
+    }
+    .stage {
+      background:
+        linear-gradient(45deg, #2a3144 25%, transparent 25%) -12px 0 / 24px 24px,
+        linear-gradient(-45deg, #2a3144 25%, transparent 25%) -12px 0 / 24px 24px,
+        linear-gradient(45deg, transparent 75%, #2a3144 75%) -12px 0 / 24px 24px,
+        linear-gradient(-45deg, transparent 75%, #2a3144 75%) -12px 0 / 24px 24px,
+        #1a2030;
+      border-radius: 12px;
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+    canvas {
+      image-rendering: pixelated;
+      width: 200px;
+      height: 200px;
+    }
+    .strip-stage canvas {
+      width: min(100%, 620px);
+      height: auto;
+    }
+    .controls {
+      margin-top: 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    button, label {
+      appearance: none;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: #273149;
+      color: var(--text);
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { border-color: rgba(110,231,255,0.5); }
+    button.active {
+      background: rgba(110,231,255,0.15);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    .meta {
+      margin-left: auto;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 13px;
+    }
+    input[type="range"] { width: 140px; }
+    .thumbs {
+      margin-top: 16px;
+      display: grid;
+      gap: 8px;
+    }
+    .thumbs button {
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+    }
+    .thumbs canvas {
+      width: 64px;
+      height: 64px;
+      background: #0e121c;
+      border-radius: 6px;
+    }
+    .thumbs .idx { color: var(--muted); font-size: 12px; }
+    .error {
+      color: #ff8e8e;
+      background: rgba(255,80,80,0.08);
+      border: 1px solid rgba(255,80,80,0.25);
+      border-radius: 10px;
+      padding: 10px 12px;
+      margin-bottom: 12px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="nav"><a href="./index.html">← Sprite Lab</a></div>
+    <h1 id="title">Anim Viewer</h1>
+    <p id="subtitle">Load a spritesheet row and scrub frames</p>
+    <div class="error" id="error"></div>
+
+    <div class="stage-wrap">
+      <div class="stage">
+        <canvas id="frameCanvas" width="100" height="100"></canvas>
+      </div>
+      <div class="stage strip-stage">
+        <canvas id="stripCanvas" width="600" height="100"></canvas>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="prev" type="button">⟵ Prev</button>
+      <button id="play" type="button" class="active">Pause</button>
+      <button id="next" type="button">Next ⟶</button>
+      <label>Speed <input id="speed" type="range" min="30" max="300" step="10" value="60" /> <span id="speedLabel">60ms</span></label>
+      <div class="meta" id="meta">Frame 0</div>
+    </div>
+
+    <div class="thumbs" id="thumbs"></div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    const sheetUrl = params.get('sheet') || '../quickswap-dragon.png';
+    const row = Math.max(0, Number(params.get('row') ?? 3) || 0);
+    const frames = Math.max(1, Number(params.get('frames') ?? 6) || 6);
+    const frameW = Math.max(1, Number(params.get('frameW') ?? 100) || 100);
+    const frameH = Math.max(1, Number(params.get('frameH') ?? 100) || 100);
+    const title = params.get('title') || 'Anim Viewer';
+    let frameMs = Math.max(16, Number(params.get('fpsMs') ?? 60) || 60);
+
+    document.getElementById('title').textContent = title;
+    document.getElementById('subtitle').textContent =
+      `${sheetUrl} · row ${row} · ${frames} frames · ${frameW}×${frameH}`;
+    document.title = title;
+
+    const frameCanvas = document.getElementById('frameCanvas');
+    const stripCanvas = document.getElementById('stripCanvas');
+    const fctx = frameCanvas.getContext('2d');
+    const sctx = stripCanvas.getContext('2d');
+    fctx.imageSmoothingEnabled = false;
+    sctx.imageSmoothingEnabled = false;
+    frameCanvas.width = frameW;
+    frameCanvas.height = frameH;
+    stripCanvas.width = frames * frameW;
+    stripCanvas.height = frameH;
+    stripCanvas.style.aspectRatio = `${frames} / 1`;
+
+    const meta = document.getElementById('meta');
+    const playBtn = document.getElementById('play');
+    const speed = document.getElementById('speed');
+    const speedLabel = document.getElementById('speedLabel');
+    const thumbs = document.getElementById('thumbs');
+    const errorEl = document.getElementById('error');
+    thumbs.style.gridTemplateColumns = `repeat(${frames}, 1fr)`;
+    speed.value = String(frameMs);
+    speedLabel.textContent = frameMs + 'ms';
+
+    let frame = 0;
+    let playing = true;
+    let acc = 0;
+    let last = performance.now();
+    let sheet = null;
+
+    function showError(msg) {
+      errorEl.style.display = 'block';
+      errorEl.textContent = msg;
+    }
+
+    function draw() {
+      if (!sheet) return;
+      const sx = frame * frameW;
+      const sy = row * frameH;
+      fctx.clearRect(0, 0, frameW, frameH);
+      fctx.drawImage(sheet, sx, sy, frameW, frameH, 0, 0, frameW, frameH);
+
+      sctx.clearRect(0, 0, stripCanvas.width, stripCanvas.height);
+      for (let i = 0; i < frames; i++) {
+        sctx.drawImage(sheet, i * frameW, sy, frameW, frameH, i * frameW, 0, frameW, frameH);
+        if (i === frame) {
+          sctx.strokeStyle = '#6ee7ff';
+          sctx.lineWidth = 2;
+          sctx.strokeRect(i * frameW + 1, 1, frameW - 2, frameH - 2);
+        }
+      }
+      meta.textContent = `Frame ${frame} / ${frames - 1}`;
+      [...thumbs.querySelectorAll('button')].forEach((b, i) => {
+        b.classList.toggle('active', i === frame);
+      });
+    }
+
+    function setFrame(i) {
+      frame = (i + frames) % frames;
+      acc = 0;
+      draw();
+    }
+
+    function tick(now) {
+      const dt = now - last;
+      last = now;
+      if (playing && sheet) {
+        acc += dt;
+        while (acc >= frameMs) {
+          acc -= frameMs;
+          frame = (frame + 1) % frames;
+        }
+        draw();
+      }
+      requestAnimationFrame(tick);
+    }
+
+    const img = new Image();
+    img.onload = () => {
+      sheet = img;
+      const neededH = (row + 1) * frameH;
+      const neededW = frames * frameW;
+      if (img.naturalHeight < neededH || img.naturalWidth < neededW) {
+        showError(
+          `Sheet is ${img.naturalWidth}×${img.naturalHeight}, but row ${row} with ${frames} frames needs at least ${neededW}×${neededH}.`
+        );
+      }
+      for (let i = 0; i < frames; i++) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const c = document.createElement('canvas');
+        c.width = frameW;
+        c.height = frameH;
+        const ctx = c.getContext('2d');
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(sheet, i * frameW, row * frameH, frameW, frameH, 0, 0, frameW, frameH);
+        const label = document.createElement('span');
+        label.className = 'idx';
+        label.textContent = String(i);
+        btn.appendChild(c);
+        btn.appendChild(label);
+        btn.addEventListener('click', () => {
+          playing = false;
+          playBtn.textContent = 'Play';
+          playBtn.classList.remove('active');
+          setFrame(i);
+        });
+        thumbs.appendChild(btn);
+      }
+      draw();
+      requestAnimationFrame(tick);
+    };
+    img.onerror = () => showError(`Failed to load sheet: ${sheetUrl}`);
+    img.src = sheetUrl;
+
+    document.getElementById('prev').onclick = () => {
+      playing = false;
+      playBtn.textContent = 'Play';
+      playBtn.classList.remove('active');
+      setFrame(frame - 1);
+    };
+    document.getElementById('next').onclick = () => {
+      playing = false;
+      playBtn.textContent = 'Play';
+      playBtn.classList.remove('active');
+      setFrame(frame + 1);
+    };
+    playBtn.onclick = () => {
+      playing = !playing;
+      playBtn.textContent = playing ? 'Pause' : 'Play';
+      playBtn.classList.toggle('active', playing);
+      last = performance.now();
+    };
+    speed.oninput = (e) => {
+      frameMs = Number(e.target.value);
+      speedLabel.textContent = frameMs + 'ms';
+    };
+    addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') {
+        playing = false;
+        playBtn.textContent = 'Play';
+        playBtn.classList.remove('active');
+        setFrame(frame - 1);
+      } else if (e.key === 'ArrowRight') {
+        playing = false;
+        playBtn.textContent = 'Play';
+        playBtn.classList.remove('active');
+        setFrame(frame + 1);
+      } else if (e.key === ' ') {
+        e.preventDefault();
+        playBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>

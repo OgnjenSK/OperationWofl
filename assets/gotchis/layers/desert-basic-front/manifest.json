@@ -1,0 +1,45 @@
+{
+  "source": "assets/gotchis/desert-basic-front.svg",
+  "size": 256,
+  "viewBox": "0 0 64 64",
+  "layers": [
+    {
+      "file": "00-full.png",
+      "className": "(composite)",
+      "note": "All layers combined"
+    },
+    {
+      "file": "01-body.png",
+      "className": "gotchi-body"
+    },
+    {
+      "file": "02-cheek.png",
+      "className": "gotchi-cheek"
+    },
+    {
+      "file": "03-primary-mouth.png",
+      "className": "gotchi-primary-mouth"
+    },
+    {
+      "file": "04-collateral.png",
+      "className": "gotchi-collateral"
+    },
+    {
+      "file": "05-eyecolor.png",
+      "className": "gotchi-eyeColor"
+    },
+    {
+      "file": "06-handsdownclosed.png",
+      "className": "gotchi-handsDownClosed"
+    },
+    {
+      "file": "07-handsdownopen.png",
+      "className": "gotchi-handsDownOpen"
+    },
+    {
+      "file": "08-handsup.png",
+      "className": "gotchi-handsUp"
+    }
+  ],
+  "note": "Import PNGs into Photoshop as layers (same canvas size). Hand pose groups are alternatives — usually keep only one of handsDownClosed / handsDownOpen / handsUp."
+}
