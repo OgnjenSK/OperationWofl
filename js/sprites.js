@@ -1,13 +1,23 @@
 import {
   SIZE_COLOR, TYPE_NAMES, GOTCHI_TEST_URL, GOTCHI_ALT_URL,
   FAR1_SHEET_W, FAR1_SHEET_H, FAR1_FRAMES, FAR1_ROW_FRAME_COUNTS,
-  FAR1_WALK_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
-  FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, FAR1_HURT_FRAME_MS
+  FAR1_IDLE_ROW, FAR1_WALK_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
+  FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, FAR1_HURT_FRAME_MS, DESERT_ATTACK_FRAME_MS
 } from './config.js';
 
 export function getAnimRow(s) {
   // Keep hurt/hit row for the whole death sequence (including last-frame hold).
   if (s.dying || s.dead) return s.hurtRow;
+  // Desert combat phases.
+  if (s.desertPhase === 'prepare' || s.desertPhase === 'reset') {
+    return s.stanceRow != null ? s.stanceRow : FAR1_STANCE_ROW;
+  }
+  if (s.desertPhase === 'attack') {
+    return s.attackRow != null ? s.attackRow : FAR1_ATTACK_ROW;
+  }
+  if (s.desertPhase === 'idleWait') {
+    return s.idleRow != null ? s.idleRow : FAR1_IDLE_ROW;
+  }
   if (s.shooting > 0 || s.bursting) return s.attackRow;
   return s.walkRow;
 }
@@ -90,13 +100,15 @@ export function buildSoldierSprites() {
     alt: makeSheetImage(GOTCHI_ALT_URL, 'Desert basic')
   };
 
-  function applySharedSheet(target, img, drawScale, laneFactor) {
+  function applySharedSheet(target, img, drawScale, laneFactor, attackFrameMs) {
     Object.assign(target, {
       usesSheet: true,
       sheetImg: img,
       sheetFrameW: FAR1_SHEET_W,
       sheetFrameH: FAR1_SHEET_H,
+      idleRow: FAR1_IDLE_ROW,
       walkRow: FAR1_WALK_ROW,
+      stanceRow: FAR1_STANCE_ROW,
       attackRow: FAR1_ATTACK_ROW,
       hurtRow: FAR1_HURT_ROW,
       deathRow: FAR1_DEATH_ROW,
@@ -105,20 +117,20 @@ export function buildSoldierSprites() {
       sheetDrawScale: drawScale,
       sheetFlip: false,
       sheetLaneFactor: laneFactor,
-      customFrameMs: FAR1_FRAME_MS,
+      customFrameMs: attackFrameMs,
       customWalkFrameMs: FAR1_WALK_FRAME_MS
     });
   }
 
   [
-    ['small', 0, sheets.alt, 2, 0.10],
-    ['small', 1, sheets.base, 2, 0.10],
-    ['medium', 0, sheets.alt, 3, 0.20],
-    ['medium', 1, sheets.base, 3, 0.20],
-    ['large', 0, sheets.alt, 6, 0.50],
-    ['large', 1, sheets.base, 6, 0.50]
-  ].forEach(([size, variant, img, drawScale, laneFactor]) => {
-    applySharedSheet(out[size][variant], img, drawScale, laneFactor);
+    ['small', 0, sheets.alt, 2, 0.10, DESERT_ATTACK_FRAME_MS],
+    ['small', 1, sheets.alt, 2, 0.10, DESERT_ATTACK_FRAME_MS],
+    ['medium', 0, sheets.alt, 3, 0.20, DESERT_ATTACK_FRAME_MS],
+    ['medium', 1, sheets.alt, 3, 0.20, DESERT_ATTACK_FRAME_MS],
+    ['large', 0, sheets.alt, 6, 0.50, DESERT_ATTACK_FRAME_MS],
+    ['large', 1, sheets.alt, 6, 0.50, DESERT_ATTACK_FRAME_MS]
+  ].forEach(([size, variant, img, drawScale, laneFactor, attackFrameMs]) => {
+    applySharedSheet(out[size][variant], img, drawScale, laneFactor, attackFrameMs);
   });
 
   const flierScale = 2.4;
@@ -158,6 +170,9 @@ export function updateSoldierAnimation(s, dt) {
     if (s.frame > hold) s.frame = hold;
     return;
   }
+
+  // Desert combat FSM advances its own frames (prepare / idle / attack / unprepare).
+  if (s.desertPhase) return;
 
   const animRowNow = getAnimRow(s);
   if (s.usesSheet && s.currentAnimRow !== animRowNow) {

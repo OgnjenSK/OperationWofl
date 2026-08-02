@@ -18,9 +18,9 @@ export const TYPE_SPEEDS = {
 };
 export const HOUSE_COLORS = ['#b6c2d9', '#d4dee8', '#9fb7d1', '#c1c8da'];
 export const SOLDIER_FRAME_MS = { small: 140, medium: 110, large: 90 };
-// Quickswap Dragon (amWMATIC + Dragon Wings + Dragon Horns + dual Fireballs) — variant 1 on each lane
+// Quickswap Dragon — flying enemy only
 export const GOTCHI_TEST_URL = 'assets/gotchis/quickswap-dragon.png';
-// Desert basic Gotchi — variant 0 on each lane
+// Desert basic Gotchi — all ground lane soldiers
 export const GOTCHI_ALT_URL = 'assets/gotchis/desert-basic.png';
 export const DESERT_FAR_URL = 'assets/backgrounds/desert/desertfar.png';
 export const DESERT_MID_URL = 'assets/backgrounds/desert/desertmid.png';
@@ -28,13 +28,17 @@ export const DESERT_FRONT_URL = 'assets/backgrounds/desert/desertfront.png';
 export const FAR1_SHEET_W = 100;
 export const FAR1_SHEET_H = 100;
 export const FAR1_FRAMES = 7;
-export const FAR1_ROW_FRAME_COUNTS = [6, 7, 3, 6, 4, 4];
-export const FAR1_WALK_ROW = 1;
-export const FAR1_ATTACK_ROW = 3;
-export const FAR1_HURT_ROW = 4;
-export const FAR1_DEATH_ROW = 5;
+export const FAR1_ROW_FRAME_COUNTS = [6, 7, 6, 6, 4, 4];
+export const FAR1_IDLE_ROW = 0;   // 1st row
+export const FAR1_WALK_ROW = 1;   // 2nd row
+export const FAR1_STANCE_ROW = 2; // 3rd row — desert prepare(0–2) / reset(3–5)
+export const FAR1_ATTACK_ROW = 3; // 4th row — desert attack (cut on frame 3 when last)
+export const FAR1_HURT_ROW = 4;   // 5th row
+export const FAR1_DEATH_ROW = 5;  // 6th row
 export const FAR1_FRAME_MS = 60;
 export const FAR1_WALK_FRAME_MS = 60;
+// Desert basic attack is slower than dragon (still uses walk at 60).
+export const DESERT_ATTACK_FRAME_MS = 90;
 // Hit/death keeps a slower pace than attack/walk (60), but not the old 180.
 export const FAR1_HURT_FRAME_MS = 90;
 export const FAR1_DRAW_SCALE = 1.4;

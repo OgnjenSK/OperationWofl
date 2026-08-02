@@ -1,7 +1,8 @@
 import {
   SIZE_COLOR, TYPE_NAMES, TYPE_SPEEDS, ENEMY_Y_SHIFT,
   LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS,
-  CROUCH_SCALE_Y, FAR1_SHEET_W, FAR1_SHEET_H, FAR1_HURT_FRAME_MS
+  CROUCH_SCALE_Y, FAR1_SHEET_W, FAR1_SHEET_H, FAR1_HURT_FRAME_MS,
+  FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW
 } from './config.js';
 import { state } from './state.js';
 import { playShootSound, playHitSound, playEnemyShootSound } from './audio.js';
@@ -67,6 +68,10 @@ function markEnemyKilled(target) {
   target.bursting = false;
   target.shooting = 0;
   target.aiming = 0;
+  target.desertPhase = null;
+  target.desertShotsLeft = 0;
+  target.desertIdleLoopsLeft = 0;
+  target.desertAtkWrapping = false;
   const hurtFrames = target.usesSheet
     ? ((target.rowFrameCounts && target.rowFrameCounts[target.hurtRow]) || target.framesPerRow || 4)
     : (target.frames ? target.frames.length : 4);
@@ -131,7 +136,9 @@ function createSoldier(size, spr, name, x, y, dir, shot) {
     usesSheet: !!spr.usesSheet,
     sheetImg: spr.sheetImg || null,
     walkRow: spr.walkRow || 0,
-    attackRow: spr.attackRow || 0,
+    idleRow: spr.idleRow != null ? spr.idleRow : FAR1_IDLE_ROW,
+    stanceRow: spr.stanceRow != null ? spr.stanceRow : FAR1_STANCE_ROW,
+    attackRow: spr.attackRow != null ? spr.attackRow : FAR1_ATTACK_ROW,
     hurtRow: spr.hurtRow || 0,
     deathRow: spr.deathRow || 0,
     framesPerRow: spr.framesPerRow || 6,
@@ -154,13 +161,23 @@ function createSoldier(size, spr, name, x, y, dir, shot) {
     currentAnimRow: (spr.walkRow || 0)
   };
   if (name === 'far2') { s.rolling = false; s.rollIn = 0.8 + Math.random() * 1.4; s.rollTime = 0; }
-  if (isDragonSoldier(s)) { s.bursting = false; s.burstShotsLeft = 0; s.burstGapTimer = 0; }
+  if (isDesertSoldier(s)) {
+    s.bursting = false;
+    s.burstShotsLeft = 0;
+    s.burstGapTimer = 0;
+    s.desertPhase = null;
+    s.desertShotsLeft = 0;
+    s.desertIdleLoopsLeft = 0;
+    s.desertAtkWrapping = false;
+  }
   return s;
 }
 
-function isDragonSoldier(s) {
-  // Variant 1 on each lane uses Quickswap Dragon graphics.
-  return s.name === 'far2' || s.name === 'middle2' || s.name === 'front2';
+function isDesertSoldier(s) {
+  // All ground lane soldiers use Desert Basic; dragon is flier-only.
+  return s.name === 'far1' || s.name === 'far2'
+    || s.name === 'middle1' || s.name === 'middle2'
+    || s.name === 'front1' || s.name === 'front2';
 }
 
 function spawnOne(size) {
@@ -216,15 +233,180 @@ function triggerEnemyShot(s) {
   damagePlayer(1);
 }
 
+function fireDesertShot(s) {
+  playEnemyShootSound();
+  damagePlayer(1);
+  if (s.desertShotsLeft > 0) s.desertShotsLeft--;
+}
+
 function resetNextShot(s) {
   s.nextShotIn = s.size === 'small' ? 2.3 + Math.random() * 0.9 : s.size === 'medium' ? 1.4 + Math.random() * 0.6 : 1.2 + Math.random() * 0.6;
 }
 
-function updateDragonBurst(s, dt) {
-  if (s.dying || !isDragonSoldier(s) || !s.bursting) return false;
+/** Desert basic often chains 2–3 attacks (~70%); otherwise a single shot. */
+function chooseDesertBurstCount() {
+  const roll = Math.random();
+  if (roll < 0.45) return 2;
+  if (roll < 0.70) return 3;
+  return 1;
+}
+
+/**
+ * Desert attack sequence:
+ *   1) small chance: idle (1st row) three full loops — if so, skip prepare
+ *   2) prepare: 3rd row, frames 0–2 (skipped when idle played)
+ *   3) attack: 4th row — from prepare always starts on frame 4; otherwise from 0
+ *      chained shots play full loop; final/single cuts after 3rd frame → reset
+ *      (if final started past the cut, wrap once so the attack still plays through)
+ *   4) reset: 3rd row, frames 3–5
+ *   5) walk
+ */
+const DESERT_PREPARE_END = 2;     // 3rd row frames 0–2
+const DESERT_RESET_START = 3;     // 3rd row frames 3–5
+const DESERT_RESET_END = 5;
+const DESERT_ATK_LAST_CUT = 2;    // 4th row — cut final attack after third frame
+const DESERT_ATK_FROM_PREPARE = 3; // 4th frame (0-based) after prepare
+const DESERT_IDLE_CHANCE = 0.50;
+
+function beginDesertCombat(s) {
+  s.desertShotsLeft = chooseDesertBurstCount();
+  s.bursting = true;
+  s.burstShotsLeft = 0;
+  s.shooting = 0;
+  s.aiming = 0;
+  s.animAcc = 0;
+  // Optional idle: after it finishes, skip prepare and go straight to attack.
+  if (Math.random() < DESERT_IDLE_CHANCE) {
+    s.desertPhase = 'idleWait';
+    s.desertIdleLoopsLeft = 3;
+    s.currentAnimRow = s.idleRow != null ? s.idleRow : FAR1_IDLE_ROW;
+    s.frame = 0;
+  } else {
+    startDesertPrepare(s);
+  }
+}
+
+function startDesertPrepare(s) {
+  const stanceRow = s.stanceRow != null ? s.stanceRow : FAR1_STANCE_ROW;
+  s.desertPhase = 'prepare';
+  s.currentAnimRow = stanceRow;
+  s.frame = 0;
+  s.animAcc = 0;
+}
+
+function startDesertAttackPhase(s, startFrame = 0) {
+  const attackRow = s.attackRow != null ? s.attackRow : FAR1_ATTACK_ROW;
+  s.desertPhase = 'attack';
+  s.currentAnimRow = attackRow;
+  s.frame = startFrame;
+  s.animAcc = 0;
+  // Final attack started past the cut must wrap so it still plays through once.
+  s.desertAtkWrapping = startFrame > DESERT_ATK_LAST_CUT;
+  fireDesertShot(s);
+}
+
+function startDesertReset(s) {
+  const stanceRow = s.stanceRow != null ? s.stanceRow : FAR1_STANCE_ROW;
+  s.desertPhase = 'reset';
+  s.currentAnimRow = stanceRow;
+  s.frame = DESERT_RESET_START;
+  s.animAcc = 0;
+}
+
+function updateDesertCombat(s, dt) {
+  if (!s.desertPhase) return false;
+  const frameMs = s.frameMs || 90;
+  const attackRow = s.attackRow != null ? s.attackRow : FAR1_ATTACK_ROW;
+  const stanceRow = s.stanceRow != null ? s.stanceRow : FAR1_STANCE_ROW;
+  const idleRow = s.idleRow != null ? s.idleRow : FAR1_IDLE_ROW;
+  s.animAcc = (s.animAcc || 0) + dt * 1000;
+
+  while (s.animAcc >= frameMs) {
+    s.animAcc -= frameMs;
+
+    if (s.desertPhase === 'idleWait') {
+      s.currentAnimRow = idleRow;
+      const count = getRowFrameCount(s, idleRow);
+      if (s.frame < count - 1) {
+        s.frame += 1;
+      } else if ((s.desertIdleLoopsLeft || 1) > 1) {
+        // Still more idle loops to play.
+        s.desertIdleLoopsLeft -= 1;
+        s.frame = 0;
+        break;
+      } else {
+        // Three idle loops done — skip prepare, start attack.
+        s.desertIdleLoopsLeft = 0;
+        startDesertAttackPhase(s);
+        break;
+      }
+    } else if (s.desertPhase === 'prepare') {
+      s.currentAnimRow = stanceRow;
+      if (s.frame < DESERT_PREPARE_END) {
+        s.frame += 1;
+      } else {
+        // After prepare, attack always begins on the 4th frame.
+        startDesertAttackPhase(s, DESERT_ATK_FROM_PREPARE);
+        break;
+      }
+    } else if (s.desertPhase === 'attack') {
+      s.currentAnimRow = attackRow;
+      const last = getRowFrameCount(s, attackRow) - 1;
+      const moreShots = s.desertShotsLeft > 0;
+      if (moreShots) {
+        if (s.frame < last) {
+          s.frame += 1;
+        } else {
+          // Chained — repeat full attack anim from the start.
+          s.frame = 0;
+          s.desertAtkWrapping = false;
+          fireDesertShot(s);
+          break;
+        }
+      } else if (s.desertAtkWrapping) {
+        // Final attack started past the cut (e.g. frame 4 after prepare):
+        // play out → wrap → cut after 3rd frame so it still performs once.
+        if (s.frame === DESERT_ATK_LAST_CUT) {
+          s.desertAtkWrapping = false;
+          startDesertReset(s);
+          break;
+        }
+        if (s.frame < last) s.frame += 1;
+        else s.frame = 0;
+      } else if (s.frame < DESERT_ATK_LAST_CUT) {
+        s.frame += 1;
+      } else {
+        // Final attack from frame 0 — cut after 3rd frame → reset.
+        startDesertReset(s);
+        break;
+      }
+    } else if (s.desertPhase === 'reset') {
+      s.currentAnimRow = stanceRow;
+      if (s.frame < DESERT_RESET_END) {
+        s.frame += 1;
+      } else {
+        s.desertPhase = null;
+        s.desertShotsLeft = 0;
+        s.desertAtkWrapping = false;
+        s.bursting = false;
+        s.shooting = 0;
+        resetNextShot(s);
+        s.currentAnimRow = s.walkRow;
+        s.frame = 0;
+        break;
+      }
+    }
+  }
+  return true;
+}
+
+function updateEnemyBurst(s, dt) {
+  if (s.dying) return false;
+  if (isDesertSoldier(s) && s.desertPhase) return updateDesertCombat(s, dt);
+  if (!s.bursting) return false;
   if (s.shooting > 0) s.shooting -= dt;
   else if (s.burstShotsLeft > 0) {
-    // Chain next attack immediately — no walk-pose gap between shots.
+    // Chain next full attack anim — no walk-pose gap between shots.
     triggerEnemyShot(s);
     s.burstShotsLeft--;
     s.frame = 0;
@@ -238,18 +420,14 @@ function updateDragonBurst(s, dt) {
 
 function updateStandardEnemyState(s, dt) {
   if (s.dying) return;
+  if (s.desertPhase) return;
   if (s.shooting > 0) s.shooting -= dt;
   else if (s.nextShotIn <= 0) {
-    if (s.name === 'front1') {
+    if (isDesertSoldier(s)) {
+      beginDesertCombat(s);
+    } else if (s.name === 'front1') {
       s.aiming = 0.35;
       s.nextShotIn = 1.2 + Math.random() * 0.7;
-    } else if (isDragonSoldier(s)) {
-      s.bursting = true;
-      s.burstShotsLeft = 10;
-      triggerEnemyShot(s);
-      s.burstShotsLeft--;
-      s.frame = 0;
-      s.animAcc = 0;
     } else {
       triggerEnemyShot(s);
       resetNextShot(s);
@@ -297,7 +475,7 @@ export function updateSoldiers(dt) {
     }
 
     updateFar2Roll(s, dt);
-    if (!updateDragonBurst(s, dt)) updateStandardEnemyState(s, dt);
+    if (!updateEnemyBurst(s, dt)) updateStandardEnemyState(s, dt);
     updateSoldierAnimation(s, dt);
   });
 

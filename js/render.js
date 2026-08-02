@@ -81,7 +81,7 @@ export function drawSoldiers() {
     if (state.showNames) {
       let label = s.name;
       if (s.name === 'far2' && s.rolling) label += '[roll]';
-      if (s.name === 'middle2' && s.bursting) label += '[burst]';
+      if (s.bursting) label += '[burst]';
       g.save();
       g.font = 'bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
       g.textBaseline = 'bottom';
