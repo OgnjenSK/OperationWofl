@@ -5,7 +5,7 @@ import { g, state } from './state.js';
 import { getBgGradient } from './background.js';
 import { drawBandsAndHouses } from './background.js';
 import { getAnimRow, getRowFrameCount } from './sprites.js';
-import { getEnemyHitbox, getEnemyBounds } from './enemies.js';
+import { getEnemyHitbox, getEnemyBounds, getFlierAnimRow } from './enemies.js';
 
 export function drawSoldiers() {
   if (!state.soldiers.length) return;
@@ -125,7 +125,7 @@ export function drawFliers() {
     if (f.usesSheet && f.sheetImg && f.sheetImg.complete && f.sheetImg.naturalWidth > 0) {
       const srcW = f.sheetFrameW || FAR1_SHEET_W;
       const srcH = f.sheetFrameH || FAR1_SHEET_H;
-      const row = ((f.shoot > 0 || f.bursting) && f.attackRow != null) ? f.attackRow : (f.walkRow || 1);
+      const row = getFlierAnimRow(f);
       const frameCount = (f.rowFrameCounts && f.rowFrameCounts[row]) || f.framesPerRow || 7;
       const frame = (f.frame || 0) % frameCount;
       const sx = frame * srcW;

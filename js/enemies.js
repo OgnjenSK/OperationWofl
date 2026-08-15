@@ -5,7 +5,7 @@ import {
   FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW
 } from './config.js';
 import { state } from './state.js';
-import { playShootSound, playHitSound, playEnemyShootSound } from './audio.js';
+import { playShootSound, playHitSound, playEnemyShootSound, playWingFlapSound, playDesertLaserSound, playFireballSound } from './audio.js?v=sfx9';
 import { damagePlayer, setHud } from './ui.js';
 import {
   getAnimRow, getRowFrameCount, getAttackAnimDuration, updateSoldierAnimation
@@ -67,6 +67,9 @@ function markEnemyKilled(target) {
   target.dead = false;
   target.bursting = false;
   target.shooting = 0;
+  target.shoot = 0;
+  target.preAttack = null;
+  target.idleLoopsLeft = 0;
   target.aiming = 0;
   target.desertPhase = null;
   target.desertShotsLeft = 0;
@@ -234,9 +237,15 @@ function triggerEnemyShot(s) {
 }
 
 function fireDesertShot(s) {
-  playEnemyShootSound();
   damagePlayer(1);
   if (s.desertShotsLeft > 0) s.desertShotsLeft--;
+}
+
+/** Zing on 1st / 3rd / 5th attack frames (0-based 0, 2, 4). */
+function playDesertZapIfFrame(s) {
+  if (s.frame === 0 || s.frame === 2 || s.frame === 4) {
+    playDesertLaserSound();
+  }
 }
 
 function resetNextShot(s) {
@@ -303,6 +312,7 @@ function startDesertAttackPhase(s, startFrame = 0) {
   // Final attack started past the cut must wrap so it still plays through once.
   s.desertAtkWrapping = startFrame > DESERT_ATK_LAST_CUT;
   fireDesertShot(s);
+  playDesertZapIfFrame(s);
 }
 
 function startDesertReset(s) {
@@ -356,11 +366,13 @@ function updateDesertCombat(s, dt) {
       if (moreShots) {
         if (s.frame < last) {
           s.frame += 1;
+          playDesertZapIfFrame(s);
         } else {
           // Chained — repeat full attack anim from the start.
           s.frame = 0;
           s.desertAtkWrapping = false;
           fireDesertShot(s);
+          playDesertZapIfFrame(s);
           break;
         }
       } else if (s.desertAtkWrapping) {
@@ -373,8 +385,10 @@ function updateDesertCombat(s, dt) {
         }
         if (s.frame < last) s.frame += 1;
         else s.frame = 0;
+        playDesertZapIfFrame(s);
       } else if (s.frame < DESERT_ATK_LAST_CUT) {
         s.frame += 1;
+        playDesertZapIfFrame(s);
       } else {
         // Final attack from frame 0 — cut after 3rd frame → reset.
         startDesertReset(s);
@@ -501,7 +515,7 @@ function spawnFlier() {
     cruiseSpeed: speed,
     speedMul: 1,
     attackRecoverT: 0,
-    turnIn: 5.0 + Math.random() * 5.0,
+    turnIn: 2.0 + Math.random() * 2.0,
     shoot: 0,
     burstShotsLeft: 0,
     dead: false,
@@ -510,6 +524,7 @@ function spawnFlier() {
     sheetImg: spr ? spr.sheetImg : null,
     sheetFrameW: spr ? spr.sheetFrameW : FAR1_SHEET_W,
     sheetFrameH: spr ? spr.sheetFrameH : FAR1_SHEET_H,
+    idleRow: spr && spr.idleRow != null ? spr.idleRow : FAR1_IDLE_ROW,
     walkRow: spr ? spr.walkRow : 1,
     attackRow: spr ? spr.attackRow : 3,
     framesPerRow: spr ? spr.framesPerRow : 7,
@@ -524,10 +539,32 @@ function spawnFlier() {
   });
 }
 
+function getFlierAnimRow(f) {
+  if (f.shoot > 0 || f.bursting) return f.attackRow != null ? f.attackRow : FAR1_ATTACK_ROW;
+  if (f.preAttack === 'idle' || f.preAttack === 'idleAfter') {
+    return f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
+  }
+  return f.walkRow || 1;
+}
+
+const FLIER_IDLE_LOOPS = 2;
+
+function beginFlierAttack(f) {
+  f.preAttack = null;
+  f.idleLoopsLeft = 0;
+  f.bursting = true;
+  f.burstShotsLeft = 9;
+  const attackFrames = (f.rowFrameCounts && f.rowFrameCounts[f.attackRow]) || 6;
+  f.shoot = (attackFrames * (f.frameMs || 60)) / 1000;
+  f.frame = 0;
+  f.animAcc = 0;
+  f.currentAnimRow = f.attackRow != null ? f.attackRow : FAR1_ATTACK_ROW;
+  damagePlayer(1);
+}
+
 export function updateFliers(dt) {
   const FLIER_SLOW_MUL = 0.22;
   const FLIER_WINDUP = 0.7;
-  const FLIER_RECOVER = 0.45;
 
   state.flyingTimer -= dt;
   if (state.flyingTimer <= 0) {
@@ -550,15 +587,11 @@ export function updateFliers(dt) {
       const sp = (f.cruiseSpeed || Math.hypot(f.vx, f.vy)) * (f.speedMul || 1);
       f.vx = (dx / len) * sp;
       f.vy = (dy / len) * sp;
-      f.turnIn = 7.0 + Math.random() * 6.0;
-      // Dragon fires 10 times in a row — start immediately, no wind-up pause.
-      f.bursting = true;
-      f.burstShotsLeft = 9;
-      const attackFrames = (f.rowFrameCounts && f.rowFrameCounts[f.attackRow]) || 6;
-      f.shoot = (attackFrames * (f.frameMs || 60)) / 1000;
-      f.frame = 0;
-      f.animAcc = 0;
-      damagePlayer(1);
+      f.turnIn = 2.8 + Math.random() * 2.2;
+      // Finish current fly loop, then idle loops, then attack.
+      if (!f.bursting && f.shoot <= 0 && !f.preAttack) {
+        f.preAttack = 'waitFly';
+      }
     }
     if (f.shoot > 0) {
       f.shoot -= dt;
@@ -572,16 +605,18 @@ export function updateFliers(dt) {
           f.animAcc = 0;
         } else {
           f.bursting = false;
-          f.attackRecoverT = FLIER_RECOVER;
+          f.preAttack = 'idleAfter';
+          f.idleLoopsLeft = FLIER_IDLE_LOOPS;
+          f.currentAnimRow = f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
+          f.frame = 0;
+          f.animAcc = 0;
         }
       }
     }
-    if (f.attackRecoverT > 0 && !f.bursting && f.shoot <= 0) {
-      f.attackRecoverT -= dt;
-    }
 
     // Slow a lot before/during attack, and briefly after, then return to cruise.
-    const wantSlow = f.bursting || f.shoot > 0 || f.attackRecoverT > 0 || f.turnIn <= FLIER_WINDUP;
+    const wantSlow = f.bursting || f.shoot > 0
+      || f.turnIn <= FLIER_WINDUP || !!f.preAttack;
     const targetMul = wantSlow ? FLIER_SLOW_MUL : 1;
     const blend = Math.min(1, dt * 5);
     f.speedMul = (f.speedMul == null ? 1 : f.speedMul) + (targetMul - f.speedMul) * blend;
@@ -590,7 +625,7 @@ export function updateFliers(dt) {
     f.vx = (f.vx / dirLen) * spd;
     f.vy = (f.vy / dirLen) * spd;
 
-    const animRow = ((f.shoot > 0 || f.bursting) && f.attackRow != null) ? f.attackRow : (f.walkRow || 1);
+    const animRow = getFlierAnimRow(f);
     if (f.currentAnimRow !== animRow) {
       f.currentAnimRow = animRow;
       f.frame = 0;
@@ -601,7 +636,47 @@ export function updateFliers(dt) {
     if (f.animAcc >= frameMs) {
       f.animAcc -= frameMs;
       const frameCount = (f.rowFrameCounts && f.rowFrameCounts[animRow]) || f.framesPerRow || 7;
-      f.frame = ((f.frame || 0) + 1) % frameCount;
+      const prevFrame = f.frame || 0;
+      f.frame = (prevFrame + 1) % frameCount;
+      const loopDone = f.frame === 0 && prevFrame !== 0;
+      const attacking = f.shoot > 0 || f.bursting;
+
+      const onScreen = f.x + f.r > 0 && f.x - f.r < state.W
+        && f.y + f.r > 0 && f.y - f.r < state.H;
+
+      if (f.preAttack === 'waitFly' && loopDone) {
+        // Current fly/walk loop finished — play idle loops, then attack.
+        if (onScreen) playWingFlapSound();
+        f.preAttack = 'idle';
+        f.idleLoopsLeft = FLIER_IDLE_LOOPS;
+        f.currentAnimRow = f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
+        f.frame = 0;
+        f.animAcc = 0;
+      } else if (f.preAttack === 'idle' && loopDone) {
+        if ((f.idleLoopsLeft || 1) > 1) {
+          f.idleLoopsLeft -= 1;
+          f.frame = 0;
+        } else {
+          f.idleLoopsLeft = 0;
+          beginFlierAttack(f);
+        }
+      } else if (f.preAttack === 'idleAfter' && loopDone) {
+        if ((f.idleLoopsLeft || 1) > 1) {
+          f.idleLoopsLeft -= 1;
+          f.frame = 0;
+        } else {
+          f.preAttack = null;
+          f.idleLoopsLeft = 0;
+          f.currentAnimRow = f.walkRow || 1;
+          f.frame = 0;
+          f.animAcc = 0;
+        }
+      } else if (attacking && (f.frame === 2 || f.frame === 5)) {
+        // Fireball whoosh on attack frames 2 and 5 (0-based).
+        playFireballSound();
+      } else if (!attacking && !f.preAttack && onScreen && loopDone) {
+        playWingFlapSound();
+      }
     }
     f.x += f.vx * dt;
     f.y += f.vy * dt;
@@ -632,4 +707,4 @@ export function configureLevel(lvl) {
   setHud();
 }
 
-export { MAX_LEVEL };
+export { MAX_LEVEL, getFlierAnimRow };

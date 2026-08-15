@@ -139,6 +139,7 @@ export function buildSoldierSprites() {
     sheetImg: sheets.base,
     sheetFrameW: FAR1_SHEET_W,
     sheetFrameH: FAR1_SHEET_H,
+    idleRow: FAR1_IDLE_ROW,
     walkRow: FAR1_WALK_ROW,
     attackRow: FAR1_ATTACK_ROW,
     framesPerRow: FAR1_FRAMES,
