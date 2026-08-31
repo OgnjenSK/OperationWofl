@@ -1,15 +1,15 @@
-import { canvas, state, startBtn, menu, levelmap } from './state.js';
-import { buildSoldierSprites } from './sprites.js';
+import { canvas, state, startBtn, menu, levelmap } from './state.js?v=sfx24';
+import { buildSoldierSprites } from './sprites.js?v=sfx26';
 import {
   initBackgroundImages, resize, updateBands,
   spawnHouses, updateHouses
-} from './background.js';
-import { updateSoldiers, updateFliers, handleShoot, configureLevel, setOnLevelComplete, MAX_LEVEL } from './enemies.js';
-import { render, updateEffects } from './render.js';
+} from './background.js?v=sfx31';
+import { updateSoldiers, updateFliers, handleShoot, handleReload, handleReloadWheel, configureLevel, setOnLevelComplete, MAX_LEVEL } from './enemies.js?v=sfx29';
+import { render, updateEffects } from './render.js?v=sfx29';
 import {
   setHud, setFade, updateMissionTitle,
   positionLevelArrows, blinkForLevel
-} from './ui.js';
+} from './ui.js?v=sfx27';
 
 function startLoop() {
   if (state.rafId == null) state.rafId = requestAnimationFrame(loop);
@@ -141,8 +141,13 @@ function init() {
     const y = e.clientY - r.top;
     state.cross.x = x;
     state.cross.y = y;
-    handleShoot(x, y);
+    if (e.button === 2) handleReload();
+    else if (e.button === 0) handleShoot(x, y);
   };
+  canvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    handleReloadWheel(e.deltaY);
+  }, { passive: false });
   canvas.oncontextmenu = e => e.preventDefault();
 
   addEventListener('keydown', e => {

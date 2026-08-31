@@ -1,115 +1,154 @@
 import {
   FAR1_SHEET_W, FAR1_SHEET_H, CROUCH_SCALE_Y
-} from './config.js';
-import { g, state } from './state.js';
-import { getBgGradient } from './background.js';
-import { drawBandsAndHouses } from './background.js';
-import { getAnimRow, getRowFrameCount } from './sprites.js';
-import { getEnemyHitbox, getEnemyBounds, getFlierAnimRow } from './enemies.js';
+} from './config.js?v=sfx24';
+import { g, state } from './state.js?v=sfx24';
+import { fillBand, drawPalmObject } from './background.js?v=sfx31';
+import { getAnimRow, getRowFrameCount } from './sprites.js?v=sfx26';
+import { getEnemyHitbox, getEnemyBounds, getFlierAnimRow } from './enemies.js?v=sfx29';
 
-export function drawSoldiers() {
-  if (!state.soldiers.length) return;
-  state.soldiers.sort((a, b) => (a.y + a.h) - (b.y + b.h));
-  g.save();
-  g.imageSmoothingEnabled = false;
-  state.soldiers.forEach(s => {
-    const fr = s.frames ? s.frames[s.frame] : null;
-    const isCrouch = (s.name === 'front1' && (s.aiming > 0 || s.shooting > 0));
-    const isRoll = (s.name === 'far2' && s.rolling);
-    if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
-      const row = (s.dying || s.dead) ? s.hurtRow : getAnimRow(s);
-      const rowLimit = getRowFrameCount(s, row);
-      // Never wrap to frame 0 while dying — that flashed a different hit frame at the end.
-      let frame = s.frame;
-      if (s.dying || s.dead) {
-        const hold = (s.deathHoldFrame != null) ? s.deathHoldFrame : Math.max(0, rowLimit - 1);
-        frame = Math.min(Math.max(0, frame), hold);
-        s.frame = frame;
-      } else if (frame >= rowLimit) {
-        frame = 0;
-        s.frame = 0;
-      }
-      const srcW = s.sheetFrameW || FAR1_SHEET_W;
-      const srcH = s.sheetFrameH || FAR1_SHEET_H;
-      const sx = frame * srcW, sy = row * srcH;
-      const drawW = Math.round(srcW * s.sheetDrawScale), drawH = Math.round(srcH * s.sheetDrawScale);
-      const dx = Math.round(s.x + (s.w - drawW) * 0.5);
-      const lanePush = Math.round(Math.max(0, drawH - s.h) * (s.sheetLaneFactor || 0));
-      const dy = Math.round(s.y + (s.h - drawH) + lanePush);
-      const shouldFlip = s.sheetFlip ? (s.dir === 1) : (s.dir !== 1);
-      if (shouldFlip) {
-        g.save();
-        g.imageSmoothingEnabled = false;
-        g.translate(dx + drawW, 0);
-        g.scale(-1, 1);
-        g.drawImage(s.sheetImg, sx, sy, srcW, srcH, 0, dy, drawW, drawH);
-        g.restore();
-      } else {
-        g.drawImage(s.sheetImg, sx, sy, srcW, srcH, dx, dy, drawW, drawH);
-      }
-    } else if (isRoll) {
-      const cx = s.x + s.w * 0.5, cy = s.y + s.h * 0.8, r = Math.min(s.w, s.h) * 0.45;
-      g.save();
-      g.fillStyle = s.color || '#FFD400';
-      g.beginPath();
-      g.arc(cx, cy, r, 0, Math.PI * 2);
-      g.fill();
-      g.strokeStyle = 'rgba(0,0,0,0.9)';
-      g.lineWidth = 2;
-      g.beginPath();
-      g.arc(cx, cy, r, 0, Math.PI * 2);
-      g.stroke();
-      g.restore();
-    } else if (isCrouch) {
-      const yBase = s.y + s.h, yPrime = yBase - s.h * CROUCH_SCALE_Y;
+function bandIndexForFeet(feetY) {
+  const bands = state.bands;
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    const top = b.y;
+    const bot = b.y + b.h;
+    if (feetY >= top && feetY < bot) return i;
+  }
+  if (feetY < bands[0].y) return 0;
+  return bands.length - 1;
+}
+
+function drawSoldierSprite(s) {
+  const fr = s.frames ? s.frames[s.frame] : null;
+  const isCrouch = (s.name === 'front1' && (s.aiming > 0 || s.shooting > 0));
+  const isRoll = (s.name === 'far2' && s.rolling);
+  if (s.usesSheet && s.sheetImg && s.sheetImg.complete && s.sheetImg.naturalWidth > 0) {
+    const row = (s.dying || s.dead) ? s.hurtRow : getAnimRow(s);
+    const rowLimit = getRowFrameCount(s, row);
+    let frame = s.frame;
+    if (s.dying || s.dead) {
+      const hold = (s.deathHoldFrame != null) ? s.deathHoldFrame : Math.max(0, rowLimit - 1);
+      frame = Math.min(Math.max(0, frame), hold);
+      s.frame = frame;
+    } else if (frame >= rowLimit) {
+      frame = 0;
+      s.frame = 0;
+    }
+    const srcW = s.sheetFrameW || FAR1_SHEET_W;
+    const srcH = s.sheetFrameH || FAR1_SHEET_H;
+    const sx = frame * srcW, sy = row * srcH;
+    const drawW = Math.round(srcW * s.sheetDrawScale), drawH = Math.round(srcH * s.sheetDrawScale);
+    const dx = Math.round(s.x + (s.w - drawW) * 0.5);
+    const lanePush = Math.round(Math.max(0, drawH - s.h) * (s.sheetLaneFactor || 0));
+    const dy = Math.round(s.y + (s.h - drawH) + lanePush);
+    const shouldFlip = s.sheetFlip ? (s.dir === 1) : (s.dir !== 1);
+    if (shouldFlip) {
       g.save();
       g.imageSmoothingEnabled = false;
-      if (s.dir === 1) { g.translate(s.x + s.w, yPrime); g.scale(-1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
-      else { g.translate(s.x, yPrime); g.scale(1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
+      g.translate(dx + drawW, 0);
+      g.scale(-1, 1);
+      g.drawImage(s.sheetImg, sx, sy, srcW, srcH, 0, dy, drawW, drawH);
       g.restore();
-    } else if (fr) {
-      if (s.dir === 1) {
-        g.save();
-        g.imageSmoothingEnabled = false;
-        g.translate(s.x + s.w, 0);
-        g.scale(-1, 1);
-        g.drawImage(fr, 0, s.y);
-        g.restore();
-      } else g.drawImage(fr, s.x, s.y);
+    } else {
+      g.drawImage(s.sheetImg, sx, sy, srcW, srcH, dx, dy, drawW, drawH);
     }
+  } else if (isRoll) {
+    const cx = s.x + s.w * 0.5, cy = s.y + s.h * 0.8, r = Math.min(s.w, s.h) * 0.45;
+    g.save();
+    g.fillStyle = s.color || '#FFD400';
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.fill();
+    g.strokeStyle = 'rgba(0,0,0,0.9)';
+    g.lineWidth = 2;
+    g.beginPath();
+    g.arc(cx, cy, r, 0, Math.PI * 2);
+    g.stroke();
+    g.restore();
+  } else if (isCrouch) {
+    const yBase = s.y + s.h, yPrime = yBase - s.h * CROUCH_SCALE_Y;
+    g.save();
+    g.imageSmoothingEnabled = false;
+    if (s.dir === 1) { g.translate(s.x + s.w, yPrime); g.scale(-1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
+    else { g.translate(s.x, yPrime); g.scale(1, CROUCH_SCALE_Y); g.drawImage(fr, 0, 0); }
+    g.restore();
+  } else if (fr) {
+    if (s.dir === 1) {
+      g.save();
+      g.imageSmoothingEnabled = false;
+      g.translate(s.x + s.w, 0);
+      g.scale(-1, 1);
+      g.drawImage(fr, 0, s.y);
+      g.restore();
+    } else g.drawImage(fr, s.x, s.y);
+  }
 
-    if (state.showNames) {
-      let label = s.name;
-      if (s.name === 'far2' && s.rolling) label += '[roll]';
-      if (s.bursting) label += '[burst]';
-      g.save();
-      g.font = 'bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
-      g.textBaseline = 'bottom';
-      const tx = s.x + 2, ty = s.y - 2, wtxt = g.measureText(label).width + 6;
-      g.fillStyle = 'rgba(0,0,0,.7)';
-      g.fillRect(tx - 2, ty - 14, wtxt, 14);
-      g.fillStyle = '#fff';
-      g.fillText(label, tx, ty - 2);
-      g.restore();
-    }
-    if (state.showBoundingBoxes) {
-      const bb = getEnemyBounds(s);
-      g.save();
-      g.strokeStyle = 'rgba(255, 64, 255, 0.9)';
-      g.lineWidth = 2;
-      g.strokeRect(bb.x + 0.5, bb.y + 0.5, bb.w - 1, bb.h - 1);
-      g.restore();
-    }
-    if (state.showHitboxes) {
-      const hb = getEnemyHitbox(s);
-      g.save();
-      g.strokeStyle = 'rgba(0,255,255,0.9)';
-      g.lineWidth = 2;
-      g.strokeRect(hb.x + 0.5, hb.y + 0.5, hb.w - 1, hb.h - 1);
-      g.restore();
+  if (state.showNames) {
+    let label = s.name;
+    if (s.name === 'far2' && s.rolling) label += '[roll]';
+    if (s.bursting) label += '[burst]';
+    g.save();
+    g.font = 'bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+    g.textBaseline = 'bottom';
+    const tx = s.x + 2, ty = s.y - 2, wtxt = g.measureText(label).width + 6;
+    g.fillStyle = 'rgba(0,0,0,.7)';
+    g.fillRect(tx - 2, ty - 14, wtxt, 14);
+    g.fillStyle = '#fff';
+    g.fillText(label, tx, ty - 2);
+    g.restore();
+  }
+  if (state.showBoundingBoxes) {
+    const bb = getEnemyBounds(s);
+    g.save();
+    g.strokeStyle = 'rgba(255, 64, 255, 0.9)';
+    g.lineWidth = 2;
+    g.strokeRect(bb.x + 0.5, bb.y + 0.5, bb.w - 1, bb.h - 1);
+    g.restore();
+  }
+  if (state.showHitboxes) {
+    const hb = getEnemyHitbox(s);
+    g.save();
+    g.strokeStyle = 'rgba(0,255,255,0.9)';
+    g.lineWidth = 2;
+    g.strokeRect(hb.x + 0.5, hb.y + 0.5, hb.w - 1, hb.h - 1);
+    g.restore();
+  }
+}
+
+function drawDepthLayer(bandIndex) {
+  const band = state.bands[bandIndex];
+  const items = [];
+  (band.objects || []).forEach(o => {
+    items.push({ z: o.y + o.height, palm: o });
+  });
+  state.soldiers.forEach(s => {
+    if (bandIndexForFeet(s.y + s.h) === bandIndex) {
+      items.push({ z: s.y + s.h, soldier: s });
     }
   });
-  g.restore();
+  items.sort((a, b) => a.z - b.z);
+  items.forEach(it => {
+    if (it.palm) drawPalmObject(it.palm);
+    else drawSoldierSprite(it.soldier);
+  });
+}
+
+export function drawSoldiers() {
+  // Soldiers are drawn inside drawWorld() depth layers with palms.
+}
+
+function drawWorld() {
+  fillBand(state.sky);
+  // Far layer
+  fillBand(state.bands[0]);
+  drawDepthLayer(0);
+  // Flying dragons sit between far and middle depth.
+  drawFliers();
+  // Middle + front
+  for (let i = 1; i < state.bands.length; i++) {
+    fillBand(state.bands[i]);
+    drawDepthLayer(i);
+  }
 }
 
 export function drawFliers() {
@@ -125,12 +164,20 @@ export function drawFliers() {
     if (f.usesSheet && f.sheetImg && f.sheetImg.complete && f.sheetImg.naturalWidth > 0) {
       const srcW = f.sheetFrameW || FAR1_SHEET_W;
       const srcH = f.sheetFrameH || FAR1_SHEET_H;
-      const row = getFlierAnimRow(f);
+      const row = (f.dying || f.dead)
+        ? (f.deathAnimRow != null ? f.deathAnimRow : getFlierAnimRow(f))
+        : getFlierAnimRow(f);
       const frameCount = (f.rowFrameCounts && f.rowFrameCounts[row]) || f.framesPerRow || 7;
-      const frame = (f.frame || 0) % frameCount;
+      let frame = f.frame || 0;
+      if (f.dying || f.dead) {
+        const hold = f.deathHoldFrame != null ? f.deathHoldFrame : Math.max(0, frameCount - 1);
+        if (frame > hold) frame = hold;
+      } else {
+        frame = frame % frameCount;
+      }
       const sx = frame * srcW;
       const sy = row * srcH;
-      const faceRight = f.vx >= 0;
+      const faceRight = f.faceRight != null ? f.faceRight : (f.vx >= 0);
       const shouldFlip = f.sheetFlip ? faceRight : !faceRight;
       if (shouldFlip) {
         g.translate(dx + drawW, dy);
@@ -214,15 +261,83 @@ function drawBandLabels() {
   g.restore();
 }
 
-function drawBgTop() {
-  let bgGradient = getBgGradient();
-  if (!bgGradient) {
-    bgGradient = g.createLinearGradient(0, 0, 0, state.H);
-    bgGradient.addColorStop(0, 'rgba(173, 223, 255, 0.95)');
-    bgGradient.addColorStop(1, 'rgba(191, 231, 255, 0.15)');
-  }
-  g.fillStyle = bgGradient;
-  g.fillRect(0, 0, state.W, state.H);
+function drawCalloutHint(cx, cy, opts) {
+  const label = opts.label;
+  const color = opts.color;
+  const startR = 11;
+  const diag = 16;
+  const horiz = opts.horiz || 38;
+  let sx = opts.sx;
+  let sy = opts.sy;
+  if (sx > 0 && cx > state.W - 72) sx = -1;
+  else if (sx < 0 && cx < 72) sx = 1;
+  if (sy > 0 && cy > state.H - 36) sy = -1;
+  else if (sy < 0 && cy < 36) sy = 1;
+  const x0 = cx + sx * startR;
+  const y0 = cy + sy * startR;
+  const x1 = x0 + sx * diag;
+  const y1 = y0 + sy * diag;
+  const x2 = x1 + sx * horiz;
+  const textAbove = y1 > 16;
+  const tx = (x1 + x2) * 0.5;
+  const ty = textAbove ? y1 - 4 : y1 + 4;
+
+  g.save();
+  g.lineCap = 'round';
+  g.lineJoin = 'round';
+  g.strokeStyle = 'rgba(0,0,0,0.7)';
+  g.lineWidth = 2.2;
+  g.beginPath();
+  g.moveTo(x0, y0);
+  g.lineTo(x1, y1);
+  g.lineTo(x2, y1);
+  g.stroke();
+  g.strokeStyle = color;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(x0, y0);
+  g.lineTo(x1, y1);
+  g.lineTo(x2, y1);
+  g.stroke();
+
+  g.font = 'bold 11px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+  g.textAlign = 'center';
+  g.textBaseline = textAbove ? 'bottom' : 'top';
+  g.lineWidth = 2;
+  g.strokeStyle = 'rgba(0,0,0,0.75)';
+  g.strokeText(label, tx, ty);
+  g.fillStyle = color;
+  g.fillText(label, tx, ty);
+  g.restore();
+}
+
+function drawReloadHint(cx, cy) {
+  if (state.phase !== 'play' || state.ammo > 0 || state.jammed) return;
+  const mix = 0.5 + 0.5 * Math.sin(((state.last || 0) / 180) * Math.PI * 2);
+  const r = 255;
+  const gg = Math.round(26 + (230 - 26) * mix);
+  const b = Math.round(26 * (1 - mix));
+  drawCalloutHint(cx, cy, {
+    label: 'reload',
+    color: 'rgb(' + r + ',' + gg + ',' + b + ')',
+    sx: 1,
+    sy: 1
+  });
+}
+
+function drawJamHint(cx, cy) {
+  if (state.phase !== 'play' || !state.jammed) return;
+  const mix = 0.5 + 0.5 * Math.sin(((state.last || 0) / 180) * Math.PI * 2);
+  const r = 255;
+  const gg = Math.round(26 + (140 - 26) * mix);
+  const b = Math.round(26 * (1 - mix));
+  drawCalloutHint(cx, cy, {
+    label: 'jammed',
+    color: 'rgb(' + r + ',' + gg + ',' + b + ')',
+    sx: 1,
+    sy: -1,
+    horiz: 42
+  });
 }
 
 function drawCross() {
@@ -251,6 +366,8 @@ function drawCross() {
   g.arc(c.x, c.y, 2.5, 0, Math.PI * 2);
   g.fill();
   g.restore();
+  drawReloadHint(c.x, c.y);
+  drawJamHint(c.x, c.y);
 }
 
 export function updateEffects(dt) {
@@ -331,11 +448,11 @@ function drawEffects() {
 
 export function render() {
   g.clearRect(0, 0, state.W, state.H);
-  drawBandsAndHouses();
-  drawSoldiers();
-  drawFliers();
+  g.save();
+  g.imageSmoothingEnabled = false;
+  drawWorld();
+  g.restore();
   drawBandLabels();
-  drawBgTop();
   drawHealth();
   drawEffects();
   drawCross();

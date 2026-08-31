@@ -1,13 +1,17 @@
 import {
-  DESERT_FAR_URL, DESERT_MID_URL, DESERT_FRONT_URL,
-  HOUSE_COLORS, BAND_FRAC, DPR
-} from './config.js';
-import { g, state, canvas } from './state.js';
-import { positionLevelArrows } from './ui.js';
+  DESERT_SKY_URL, DESERT_FAR_URL, DESERT_MID_URL, DESERT_FRONT_URL, PALM_TREE_URL, CACTUS_URL,
+  BAND_FRAC, DPR, FAR1_SHEET_H
+} from './config.js?v=sfx25';
+import { g, state, canvas } from './state.js?v=sfx24';
+import { positionLevelArrows } from './ui.js?v=sfx24';
 
-let bgGradient = null;
-
-export function getBgGradient() { return bgGradient; }
+let palmTreeImg = null;
+let cactusImg = null;
+/** Same draw scales as far / middle / front soldiers. */
+const PALM_UNIT_SCALE = [2, 3, 6];
+const PALM_HEIGHT_MUL = 1.5;
+const CACTUS_NATIVE_W = 78;
+const CACTUS_NATIVE_H = 118;
 
 export function makePattern(c1, c2) {
   const off = document.createElement('canvas');
@@ -38,9 +42,12 @@ function createLayerImage(url, label, onLoad) {
 }
 
 export function initBackgroundImages(onLoad) {
+  state.sky.image = createLayerImage(DESERT_SKY_URL, 'Desert sky', onLoad);
   state.bands[0].image = createLayerImage(DESERT_FAR_URL, 'Desert far', onLoad);
   state.bands[1].image = createLayerImage(DESERT_MID_URL, 'Desert mid', onLoad);
   state.bands[2].image = createLayerImage(DESERT_FRONT_URL, 'Desert front', onLoad);
+  palmTreeImg = createLayerImage(PALM_TREE_URL, 'Palm tree', onLoad);
+  cactusImg = createLayerImage(CACTUS_URL, 'Cactus', onLoad);
 }
 
 export function resize() {
@@ -54,6 +61,9 @@ export function resize() {
   state.W = vw;
   state.H = vh;
   let y = Math.max(0, 1 - (BAND_FRAC[0] + BAND_FRAC[1] + BAND_FRAC[2])) * state.H;
+  state.sky.y = 0;
+  state.sky.h = y;
+  state.sky.pattern = makePattern('#b8dcff', '#c5e6ff');
   for (let i = 0; i < 3; i++) {
     const h = Math.floor(state.H * BAND_FRAC[i]);
     state.bands[i].y = y;
@@ -63,9 +73,6 @@ export function resize() {
   state.bands[0].pattern = makePattern('#f0c56a', '#efc061');
   state.bands[1].pattern = makePattern('#efbb55', '#ebb24a');
   state.bands[2].pattern = makePattern('#e4a33d', '#dc9732');
-  bgGradient = g.createLinearGradient(0, 0, 0, state.H);
-  bgGradient.addColorStop(0, 'rgba(173, 223, 255, 0.95)');
-  bgGradient.addColorStop(1, 'rgba(191, 231, 255, 0.15)');
   positionLevelArrows();
 }
 
@@ -90,54 +97,84 @@ export function fillBand(b) {
   g.restore();
 }
 
+function propImage(kind) {
+  return kind === 'cactus' ? cactusImg : palmTreeImg;
+}
+
 export function drawObjects(b) {
-  b.objects.forEach(o => {
-    g.fillStyle = o.color;
-    g.fillRect(o.x, o.y, o.width, o.height);
-    g.strokeStyle = 'rgba(0,0,0,.85)';
-    g.lineWidth = 2;
-    g.strokeRect(o.x + 0.5, o.y + 0.5, o.width - 1, o.height - 1);
-    g.fillStyle = '#1d1f27';
-    g.beginPath();
-    g.moveTo(o.x - 12, o.y);
-    g.lineTo(o.x + o.width / 2, o.y - o.height * 0.42);
-    g.lineTo(o.x + o.width + 12, o.y);
-    g.closePath();
-    g.fill();
-    g.strokeStyle = 'rgba(0,0,0,.9)';
-    g.stroke();
-  });
+  if (!b.objects || !b.objects.length) return;
+  b.objects.forEach(o => drawPalmObject(o));
+}
+
+export function drawPalmObject(o) {
+  const img = propImage(o.kind);
+  if (!img || !img.complete || img.naturalWidth <= 0) return;
+  g.save();
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, Math.round(o.x), Math.round(o.y), Math.round(o.width), Math.round(o.height));
+  g.restore();
 }
 
 export function drawBandsAndHouses() {
+  fillBand(state.sky);
   fillBand(state.bands[0]);
-  drawObjects(state.bands[0]);
   fillBand(state.bands[1]);
   fillBand(state.bands[2]);
 }
 
+function propSize(kind, bandIndex, img) {
+  if (kind === 'cactus') {
+    const nw = (img && img.complete && img.naturalWidth > 0) ? img.naturalWidth : CACTUS_NATIVE_W;
+    const nh = (img && img.complete && img.naturalHeight > 0) ? img.naturalHeight : CACTUS_NATIVE_H;
+    const layerScale = (PALM_UNIT_SCALE[bandIndex] || 2) / PALM_UNIT_SCALE[0];
+    return { width: nw * layerScale, height: nh * layerScale };
+  }
+  const scale = PALM_UNIT_SCALE[bandIndex] || 2;
+  const height = FAR1_SHEET_H * scale * PALM_HEIGHT_MUL;
+  const aspect = (img && img.complete && img.naturalWidth > 0)
+    ? (img.naturalWidth / img.naturalHeight)
+    : (1086 / 1448);
+  return { width: height * aspect, height };
+}
+
+function spawnPalmOnBand(bandIndex) {
+  const b = state.bands[bandIndex];
+  if (!b.objects) b.objects = [];
+  // Sparse spawn — skip often so props only appear sometimes.
+  if (Math.random() < 0.5) {
+    b.spawnIn = 280 + Math.random() * 520;
+    return;
+  }
+  const kind = Math.random() < 0.96 ? 'cactus' : 'palm';
+  const img = propImage(kind);
+  const { width, height } = propSize(kind, bandIndex, img);
+  const ground = b.y + b.h * (0.82 + Math.random() * 0.14);
+  const y = ground - height;
+  b.objects.push({ kind, x: state.W + 20, y, width, height });
+  b.spawnIn = 650 + Math.random() * 1000 + bandIndex * 120;
+}
+
 export function spawnHouses(dt) {
-  const b = state.bands[0];
-  b.spawnIn -= b.speed * dt;
-  if (b.spawnIn > 0) return;
-  const width = 200 + Math.random() * 200;
-  const maxH = b.h * 1.3;
-  const height = Math.min(maxH, b.h * (0.5 + Math.random() * 0.8));
-  const base = b.y + 2 + Math.random() * ((b.y + b.h - 2) - (b.y + 2));
-  const y = base - height;
-  const color = HOUSE_COLORS[(Math.random() * HOUSE_COLORS.length) | 0];
-  b.objects.push({ x: state.W + 40, y, width, height, color });
-  b.spawnIn = 500 + Math.random() * 700;
+  state.bands.forEach((b, i) => {
+    if (b.spawnIn == null) b.spawnIn = 200 + i * 150;
+    b.spawnIn -= b.speed * dt;
+    if (b.spawnIn > 0) return;
+    spawnPalmOnBand(i);
+  });
 }
 
 export function updateHouses(dt) {
-  const b = state.bands[0];
-  b.objects.forEach(o => o.x -= b.speed * dt);
-  b.objects = b.objects.filter(o => o.x + o.width > -60);
+  state.bands.forEach(b => {
+    if (!b.objects) return;
+    b.objects.forEach(o => o.x -= b.speed * dt);
+    b.objects = b.objects.filter(o => o.x + o.width > -80);
+  });
 }
 
 export function updateBands(dt) {
-  state.bands.forEach(b => {
+  const layers = [state.sky, ...state.bands];
+  layers.forEach(b => {
+    if (!b || b.speed == null) return;
     b.off += b.speed * dt;
     const tileW = (b.image && b.image.complete && b.image.naturalWidth > 0) ? b.image.naturalWidth : 512;
     if (b.off >= tileW) b.off -= tileW;

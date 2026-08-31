@@ -1,4 +1,4 @@
-import { audio } from './state.js';
+import { audio } from './state.js?v=sfx24';
 
 export function ensureAudio() {
   if (!audio.ctx) {
@@ -260,4 +260,131 @@ export function playFireballSound() {
   echoGain.connect(ctx.destination);
   echo.start(t + echoDelay);
   echo.stop(t + echoDelay + dur);
+}
+
+/** Empty-chamber dry fire — short mechanical click. */
+export function playJamSound() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+
+  function tick(at, freq, gain, dur) {
+    const o = ctx.createOscillator();
+    const gn = ctx.createGain();
+    o.type = 'square';
+    o.frequency.value = freq;
+    gn.gain.setValueAtTime(gain, at);
+    gn.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    o.connect(gn);
+    gn.connect(ctx.destination);
+    o.start(at);
+    o.stop(at + dur);
+  }
+
+  function snap(at, dur, gain) {
+    const n = Math.max(1, Math.floor(ctx.sampleRate * dur));
+    const buf = ctx.createBuffer(1, n, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < n; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 8);
+    }
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 1200;
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 4500;
+    const gn = ctx.createGain();
+    gn.gain.setValueAtTime(gain, at);
+    gn.gain.exponentialRampToValueAtTime(0.001, at + dur);
+    src.connect(hp);
+    hp.connect(lp);
+    lp.connect(gn);
+    gn.connect(ctx.destination);
+    src.start(at);
+    src.stop(at + dur);
+  }
+
+  snap(t, 0.018, 0.16);
+  tick(t, 980, 0.09, 0.016);
+  snap(t + 0.02, 0.012, 0.08);
+  tick(t + 0.02, 640, 0.05, 0.012);
+}
+
+function metalClack(ctx, at, freq, gain, dur) {
+  const o = ctx.createOscillator();
+  const gn = ctx.createGain();
+  o.type = 'square';
+  o.frequency.setValueAtTime(freq, at);
+  o.frequency.exponentialRampToValueAtTime(freq * 0.4, at + dur);
+  gn.gain.setValueAtTime(0.0001, at);
+  gn.gain.exponentialRampToValueAtTime(gain, at + 0.003);
+  gn.gain.exponentialRampToValueAtTime(0.001, at + dur);
+  o.connect(gn);
+  gn.connect(ctx.destination);
+  o.start(at);
+  o.stop(at + dur);
+
+  const o2 = ctx.createOscillator();
+  const gn2 = ctx.createGain();
+  o2.type = 'triangle';
+  o2.frequency.setValueAtTime(freq * 2.4, at);
+  o2.frequency.exponentialRampToValueAtTime(freq * 0.7, at + dur * 0.8);
+  gn2.gain.setValueAtTime(0.0001, at);
+  gn2.gain.exponentialRampToValueAtTime(gain * 0.45, at + 0.002);
+  gn2.gain.exponentialRampToValueAtTime(0.001, at + dur * 0.7);
+  o2.connect(gn2);
+  gn2.connect(ctx.destination);
+  o2.start(at);
+  o2.stop(at + dur);
+}
+
+function plasticSlide(ctx, at, dur, gain) {
+  const bufferSize = Math.max(1, Math.floor(ctx.sampleRate * dur));
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    const env = Math.sin((i / bufferSize) * Math.PI);
+    data[i] = (Math.random() * 2 - 1) * env;
+  }
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+  const bp = ctx.createBiquadFilter();
+  bp.type = 'bandpass';
+  bp.frequency.setValueAtTime(900, at);
+  bp.frequency.exponentialRampToValueAtTime(420, at + dur);
+  bp.Q.value = 1.4;
+  const noiseGain = ctx.createGain();
+  noiseGain.gain.setValueAtTime(0.0001, at);
+  noiseGain.gain.exponentialRampToValueAtTime(gain, at + 0.02);
+  noiseGain.gain.exponentialRampToValueAtTime(0.001, at + dur);
+  noise.connect(bp);
+  bp.connect(noiseGain);
+  noiseGain.connect(ctx.destination);
+  noise.start(at);
+  noise.stop(at + dur);
+}
+
+/** Mag release + drop (first reload scroll). */
+export function playMagOutSound() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  metalClack(ctx, t, 340, 0.09, 0.06);
+  plasticSlide(ctx, t + 0.03, 0.14, 0.07);
+  metalClack(ctx, t + 0.11, 180, 0.07, 0.08);
+}
+
+/** Mag seat + bolt release (second reload scroll). */
+export function playReloadSound() {
+  const ctx = ensureAudio();
+  if (!ctx) return;
+  const t = ctx.currentTime;
+  plasticSlide(ctx, t, 0.1, 0.08);
+  metalClack(ctx, t + 0.06, 260, 0.11, 0.07);
+  metalClack(ctx, t + 0.12, 520, 0.08, 0.05);
+  metalClack(ctx, t + 0.18, 210, 0.1, 0.09);
+  metalClack(ctx, t + 0.22, 880, 0.045, 0.04);
 }

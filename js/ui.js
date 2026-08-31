@@ -1,7 +1,15 @@
-import { state, hud, fade, menu, levelmap, missionTitle } from './state.js';
+import { state, hud, fade, menu, levelmap, missionTitle } from './state.js?v=sfx24';
 
 export function setHud() {
-  hud.textContent = 'ENEMIES: ' + state.enemiesLeft;
+  let extra = '';
+  if (state.jammed) {
+    extra = state.reloadDir
+      ? '  JAMMED — scroll the other way'
+      : '  JAMMED — scroll down then up';
+  } else if (state.ammo <= 0) {
+    extra = '  RELOAD — right click';
+  }
+  hud.textContent = 'ENEMIES: ' + state.enemiesLeft + '  AMMO: ' + state.ammo + '/' + (state.magSize || 20) + extra;
 }
 
 export function damagePlayer(amount) {

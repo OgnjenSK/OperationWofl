@@ -1,4 +1,4 @@
-import { SPEEDS } from './config.js';
+import { SPEEDS } from './config.js?v=sfx24';
 
 export const canvas = document.getElementById('game');
 export const g = canvas.getContext('2d');
@@ -17,10 +17,11 @@ export const state = {
   W: 0,
   H: 0,
   last: 0,
+  sky: { y: 0, h: 0, off: 0, speed: 18, image: null },
   bands: [
     { y: 0, h: 0, off: 0, speed: SPEEDS[0], pattern: null, name: 'Band 0', objects: [], spawnIn: 200 },
-    { y: 0, h: 0, off: 0, speed: SPEEDS[1], pattern: null, name: 'Band 1' },
-    { y: 0, h: 0, off: 0, speed: SPEEDS[2], pattern: null, name: 'Band 2' }
+    { y: 0, h: 0, off: 0, speed: SPEEDS[1], pattern: null, name: 'Band 1', objects: [], spawnIn: 320 },
+    { y: 0, h: 0, off: 0, speed: SPEEDS[2], pattern: null, name: 'Band 2', objects: [], spawnIn: 480 }
   ],
   soldiers: [],
   soldierTimers: { small: 6, medium: 7, large: 8 },
@@ -37,5 +38,9 @@ export const state = {
   showBoundingBoxes: false,
   showHitboxes: false,
   maxHealth: 10,
-  health: 10
+  health: 10,
+  magSize: 20,
+  ammo: 20,
+  jammed: false,
+  reloadDir: 0
 };

@@ -1,15 +1,15 @@
 import {
   SIZE_COLOR, TYPE_NAMES, TYPE_SPEEDS, ENEMY_Y_SHIFT,
-  LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS,
+  LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS, JAM_CHANCE,
   CROUCH_SCALE_Y, FAR1_SHEET_W, FAR1_SHEET_H, FAR1_HURT_FRAME_MS,
-  FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW
-} from './config.js';
-import { state } from './state.js';
-import { playShootSound, playHitSound, playEnemyShootSound, playWingFlapSound, playDesertLaserSound, playFireballSound } from './audio.js?v=sfx9';
-import { damagePlayer, setHud } from './ui.js';
+  FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW
+} from './config.js?v=sfx24';
+import { state } from './state.js?v=sfx24';
+import { playShootSound, playHitSound, playJamSound, playMagOutSound, playReloadSound, playEnemyShootSound, playWingFlapSound, playDesertLaserSound, playFireballSound } from './audio.js?v=sfx24';
+import { damagePlayer, setHud } from './ui.js?v=sfx24';
 import {
   getAnimRow, getRowFrameCount, getAttackAnimDuration, updateSoldierAnimation
-} from './sprites.js';
+} from './sprites.js?v=sfx26';
 
 let onLevelComplete = () => {};
 
@@ -75,20 +75,31 @@ function markEnemyKilled(target) {
   target.desertShotsLeft = 0;
   target.desertIdleLoopsLeft = 0;
   target.desertAtkWrapping = false;
+  target.preWindupT = 0;
+  target.attackRecoverT = 0;
+  target.holdAttack = false;
+  if (target.vx != null) target.faceRight = target.vx >= 0;
+  else if (target.hx != null) target.faceRight = target.hx >= 0;
+  const animRow = target.hurtRow != null ? target.hurtRow : FAR1_HURT_ROW;
   const hurtFrames = target.usesSheet
-    ? ((target.rowFrameCounts && target.rowFrameCounts[target.hurtRow]) || target.framesPerRow || 4)
+    ? ((target.rowFrameCounts && target.rowFrameCounts[animRow]) || target.framesPerRow || 4)
     : (target.frames ? target.frames.length : 4);
-  // Sheet hurt row ends with a recovery frame that eases back toward walk/idle.
-  // Death should freeze on the last real hit pose, not that recovery frame.
+  // Hurt row ends with a recovery/idle frame — freeze on the last real hit pose.
   const hitPoseFrames = hurtFrames >= 3 ? hurtFrames - 1 : hurtFrames;
   target.deathHoldFrame = Math.max(0, hitPoseFrames - 1);
+  target.deathAnimRow = animRow;
   const playMs = target.deathHoldFrame * FAR1_HURT_FRAME_MS;
-  const holdMs = 140;
+  const holdMs = target.name === 'dragon' ? 420 : 140;
   target.deathTimer = (playMs + holdMs) / 1000;
-  target.deathSlideSpeed = Math.max(80, (target.moveSpeed || 140) * 0.6);
+  target.deathSlideSpeed = Math.max(80, (target.moveSpeed || target.cruiseSpeed || 140) * 0.6);
   target.frame = 0;
   target.animAcc = 0;
-  target.currentAnimRow = target.hurtRow;
+  target.currentAnimRow = animRow;
+  if (state.enemiesLeft > 0) {
+    state.enemiesLeft--;
+    setHud();
+    if (state.enemiesLeft === 0) onLevelComplete();
+  }
 }
 
 function chooseHitTarget(x, y) {
@@ -104,6 +115,7 @@ function chooseHitTarget(x, y) {
   });
   if (target) return target;
   state.fliers.forEach(f => {
+    if (f.dying || f.dead) return;
     if (x >= f.x - f.r && x <= f.x + f.r && y >= f.y - f.r && y <= f.y + f.r) {
       const feet = f.y + f.r;
       if (feet > bestFeet) { bestFeet = feet; target = f; }
@@ -113,8 +125,24 @@ function chooseHitTarget(x, y) {
 }
 
 export function handleShoot(x, y) {
+  if (state.phase !== 'play') return;
+  if (state.jammed) {
+    playJamSound();
+    setHud();
+    return;
+  }
+  if (state.ammo <= 0) {
+    playJamSound();
+    return;
+  }
+  state.ammo--;
   playShootSound();
   state.effects.push({ type: 'flash', x, y, t: 0, dur: 0.15 });
+  if (Math.random() < (JAM_CHANCE || 0.02)) {
+    state.jammed = true;
+    state.reloadDir = 0;
+  }
+  setHud();
   const target = chooseHitTarget(x, y);
   if (!target) return;
   playHitSound();
@@ -125,11 +153,36 @@ export function handleShoot(x, y) {
     markEnemyKilled(target);
   }
   state.effects.push({ type: 'hit', x, y, t: 0, dur: 0.18 });
-  if (state.enemiesLeft > 0) {
-    state.enemiesLeft--;
-    setHud();
-    if (state.enemiesLeft === 0) onLevelComplete();
+}
+
+export function handleReload() {
+  if (state.phase !== 'play') return;
+  if (state.ammo > 0) return;
+  playMagOutSound();
+  setTimeout(() => playReloadSound(), 120);
+  state.ammo = state.magSize || 20;
+  setHud();
+}
+
+export function handleReloadWheel(deltaY) {
+  if (state.phase !== 'play') return;
+  if (!state.jammed) {
+    state.reloadDir = 0;
+    return;
   }
+  const dir = deltaY > 0 ? 1 : deltaY < 0 ? -1 : 0;
+  if (!dir) return;
+  if (!state.reloadDir) {
+    state.reloadDir = dir;
+    playMagOutSound();
+    setHud();
+    return;
+  }
+  if (dir === state.reloadDir) return;
+  state.reloadDir = 0;
+  state.jammed = false;
+  playReloadSound();
+  setHud();
 }
 
 function createSoldier(size, spr, name, x, y, dir, shot) {
@@ -515,10 +568,12 @@ function spawnFlier() {
     cruiseSpeed: speed,
     speedMul: 1,
     attackRecoverT: 0,
+    preWindupT: 0,
     turnIn: 2.0 + Math.random() * 2.0,
     shoot: 0,
     burstShotsLeft: 0,
     dead: false,
+    dying: false,
     name: 'dragon',
     usesSheet: !!(spr && spr.usesSheet),
     sheetImg: spr ? spr.sheetImg : null,
@@ -527,6 +582,8 @@ function spawnFlier() {
     idleRow: spr && spr.idleRow != null ? spr.idleRow : FAR1_IDLE_ROW,
     walkRow: spr ? spr.walkRow : 1,
     attackRow: spr ? spr.attackRow : 3,
+    hurtRow: spr && spr.hurtRow != null ? spr.hurtRow : FAR1_HURT_ROW,
+    deathRow: spr && spr.deathRow != null ? spr.deathRow : FAR1_DEATH_ROW,
     framesPerRow: spr ? spr.framesPerRow : 7,
     rowFrameCounts: spr && spr.rowFrameCounts ? spr.rowFrameCounts.slice() : null,
     sheetDrawScale: spr ? spr.sheetDrawScale : 2.4,
@@ -540,6 +597,11 @@ function spawnFlier() {
 }
 
 function getFlierAnimRow(f) {
+  if (f.dying || f.dead) {
+    return f.deathAnimRow != null
+      ? f.deathAnimRow
+      : (f.hurtRow != null ? f.hurtRow : FAR1_HURT_ROW);
+  }
   if (f.shoot > 0 || f.bursting) return f.attackRow != null ? f.attackRow : FAR1_ATTACK_ROW;
   if (f.preAttack === 'idle' || f.preAttack === 'idleAfter') {
     return f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
@@ -548,12 +610,67 @@ function getFlierAnimRow(f) {
 }
 
 const FLIER_IDLE_LOOPS = 2;
+const FLIER_SLOW_MUL = 0.22;
+const FLIER_WINDUP = 0.7;
+const FLIER_TURN_MIN = 2.8;
+const FLIER_TURN_RANGE = 2.2;
+const FLIER_HOLD_CHANCE = 0.4;
+
+function flierInCombat(f) {
+  return !!(f.bursting || f.shoot > 0 || f.preAttack || f.attackRecoverT > 0 || f.preWindupT > 0);
+}
+
+function beginFlierIdle(f, phase) {
+  f.preAttack = phase;
+  f.idleLoopsLeft = FLIER_IDLE_LOOPS;
+  f.currentAnimRow = f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
+  f.frame = 0;
+  f.animAcc = 0;
+}
+
+function applyFlierSpeed(f, dt) {
+  if (f.preWindupT > 0) {
+    const u = 1 - f.preWindupT / FLIER_WINDUP;
+    f.speedMul = 1 + (FLIER_SLOW_MUL - 1) * u;
+  } else if (f.attackRecoverT > 0) {
+    const u = 1 - f.attackRecoverT / FLIER_WINDUP;
+    f.speedMul = FLIER_SLOW_MUL + (1 - FLIER_SLOW_MUL) * u;
+  } else {
+    const attacking = f.bursting || f.shoot > 0;
+    const targetMul = (f.holdAttack && attacking) ? 0
+      : (attacking || f.preAttack) ? FLIER_SLOW_MUL : 1;
+    const blend = Math.min(1, dt * 5);
+    f.speedMul = (f.speedMul == null ? 1 : f.speedMul) + (targetMul - f.speedMul) * blend;
+  }
+  const dirLen = Math.hypot(f.vx, f.vy);
+  let ux, uy;
+  if (dirLen > 1) {
+    ux = f.vx / dirLen;
+    uy = f.vy / dirLen;
+    f.hx = ux;
+    f.hy = uy;
+  } else {
+    ux = f.hx == null ? 1 : f.hx;
+    uy = f.hy == null ? 0 : f.hy;
+  }
+  const spd = (f.cruiseSpeed || 180) * (f.speedMul == null ? 1 : f.speedMul);
+  f.vx = ux * spd;
+  f.vy = uy * spd;
+}
+
+function resetFlierTurnIn(f) {
+  f.turnIn = FLIER_TURN_MIN + Math.random() * FLIER_TURN_RANGE;
+}
 
 function beginFlierAttack(f) {
   f.preAttack = null;
   f.idleLoopsLeft = 0;
   f.bursting = true;
   f.burstShotsLeft = 9;
+  f.holdAttack = Math.random() < FLIER_HOLD_CHANCE;
+  const len = Math.max(1, Math.hypot(f.vx, f.vy));
+  f.hx = f.vx / len;
+  f.hy = f.vy / len;
   const attackFrames = (f.rowFrameCounts && f.rowFrameCounts[f.attackRow]) || 6;
   f.shoot = (attackFrames * (f.frameMs || 60)) / 1000;
   f.frame = 0;
@@ -562,10 +679,17 @@ function beginFlierAttack(f) {
   damagePlayer(1);
 }
 
-export function updateFliers(dt) {
-  const FLIER_SLOW_MUL = 0.22;
-  const FLIER_WINDUP = 0.7;
+function updateDyingFlier(f, dt) {
+  f.deathTimer -= dt;
+  if (f.deathTimer <= 0) f.dead = true;
+  f.vx *= Math.max(0, 1 - 2.4 * dt);
+  f.vy += 260 * dt;
+  f.x += f.vx * dt;
+  f.y += f.vy * dt;
+  updateSoldierAnimation(f, dt);
+}
 
+export function updateFliers(dt) {
   state.flyingTimer -= dt;
   if (state.flyingTimer <= 0) {
     if (state.fliers.length === 0) {
@@ -577,20 +701,28 @@ export function updateFliers(dt) {
   }
   state.fliers.forEach(f => {
     if (f.dead) return;
-    f.turnIn -= dt;
-    if (f.turnIn <= 0) {
-      const tx = state.cross.x || state.W / 2;
-      const maxTY = state.H * 0.3;
-      const ty = Math.min(state.cross.y || state.H / 3, maxTY);
-      const dx = tx - f.x, dy = ty - f.y;
-      const len = Math.max(1, Math.hypot(dx, dy));
-      const sp = (f.cruiseSpeed || Math.hypot(f.vx, f.vy)) * (f.speedMul || 1);
-      f.vx = (dx / len) * sp;
-      f.vy = (dy / len) * sp;
-      f.turnIn = 2.8 + Math.random() * 2.2;
-      // Finish current fly loop, then idle loops, then attack.
-      if (!f.bursting && f.shoot <= 0 && !f.preAttack) {
-        f.preAttack = 'waitFly';
+    if (f.dying) {
+      updateDyingFlier(f, dt);
+      return;
+    }
+    if (f.attackRecoverT > 0) {
+      f.attackRecoverT -= dt;
+      if (f.attackRecoverT <= 0) {
+        f.attackRecoverT = 0;
+        resetFlierTurnIn(f);
+      }
+    }
+    if (f.preWindupT > 0) {
+      f.preWindupT -= dt;
+      if (f.preWindupT <= 0) {
+        f.preWindupT = 0;
+        beginFlierIdle(f, 'idle');
+      }
+    }
+    if (!flierInCombat(f)) {
+      f.turnIn -= dt;
+      if (f.turnIn <= 0) {
+        f.preWindupT = FLIER_WINDUP;
       }
     }
     if (f.shoot > 0) {
@@ -605,25 +737,13 @@ export function updateFliers(dt) {
           f.animAcc = 0;
         } else {
           f.bursting = false;
-          f.preAttack = 'idleAfter';
-          f.idleLoopsLeft = FLIER_IDLE_LOOPS;
-          f.currentAnimRow = f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
-          f.frame = 0;
-          f.animAcc = 0;
+          f.holdAttack = false;
+          beginFlierIdle(f, 'idleAfter');
         }
       }
     }
 
-    // Slow a lot before/during attack, and briefly after, then return to cruise.
-    const wantSlow = f.bursting || f.shoot > 0
-      || f.turnIn <= FLIER_WINDUP || !!f.preAttack;
-    const targetMul = wantSlow ? FLIER_SLOW_MUL : 1;
-    const blend = Math.min(1, dt * 5);
-    f.speedMul = (f.speedMul == null ? 1 : f.speedMul) + (targetMul - f.speedMul) * blend;
-    const dirLen = Math.max(1, Math.hypot(f.vx, f.vy));
-    const spd = (f.cruiseSpeed || dirLen) * f.speedMul;
-    f.vx = (f.vx / dirLen) * spd;
-    f.vy = (f.vy / dirLen) * spd;
+    applyFlierSpeed(f, dt);
 
     const animRow = getFlierAnimRow(f);
     if (f.currentAnimRow !== animRow) {
@@ -644,15 +764,7 @@ export function updateFliers(dt) {
       const onScreen = f.x + f.r > 0 && f.x - f.r < state.W
         && f.y + f.r > 0 && f.y - f.r < state.H;
 
-      if (f.preAttack === 'waitFly' && loopDone) {
-        // Current fly/walk loop finished — play idle loops, then attack.
-        if (onScreen) playWingFlapSound();
-        f.preAttack = 'idle';
-        f.idleLoopsLeft = FLIER_IDLE_LOOPS;
-        f.currentAnimRow = f.idleRow != null ? f.idleRow : FAR1_IDLE_ROW;
-        f.frame = 0;
-        f.animAcc = 0;
-      } else if (f.preAttack === 'idle' && loopDone) {
+      if (f.preAttack === 'idle' && loopDone) {
         if ((f.idleLoopsLeft || 1) > 1) {
           f.idleLoopsLeft -= 1;
           f.frame = 0;
@@ -667,6 +779,7 @@ export function updateFliers(dt) {
         } else {
           f.preAttack = null;
           f.idleLoopsLeft = 0;
+          f.attackRecoverT = FLIER_WINDUP;
           f.currentAnimRow = f.walkRow || 1;
           f.frame = 0;
           f.animAcc = 0;
@@ -681,7 +794,15 @@ export function updateFliers(dt) {
     f.x += f.vx * dt;
     f.y += f.vy * dt;
     const yMax = state.H * 0.33;
-    if (f.y > yMax) { f.y = yMax; if (f.vy > 0) f.vy = -Math.abs(f.vy) * 0.6; }
+    if (f.y > yMax) {
+      f.y = yMax;
+      if (f.vy > 0) {
+        f.vy = 0;
+        if (Math.abs(f.vx) < 1) {
+          f.vx = (f.vx >= 0 ? 1 : -1) * (f.cruiseSpeed || 180) * (f.speedMul || 1);
+        }
+      }
+    }
   });
   state.fliers = state.fliers.filter(f => !f.dead && f.x > -80 && f.x < state.W + 80 && f.y > -80 && f.y < state.H + 80);
 }
@@ -702,7 +823,12 @@ export function configureLevel(lvl) {
   state.soldiers.length = 0;
   state.fliers.length = 0;
   state.effects.length = 0;
+  state.jammed = false;
+  state.reloadDir = 0;
+  state.ammo = state.magSize || 20;
   if (state.bands[0] && state.bands[0].objects) state.bands[0].objects.length = 0;
+  if (state.bands[1] && state.bands[1].objects) state.bands[1].objects.length = 0;
+  if (state.bands[2] && state.bands[2].objects) state.bands[2].objects.length = 0;
   resetSpawnTimers();
   setHud();
 }

@@ -1,5 +1,5 @@
 export const DPR = window.devicePixelRatio || 1;
-export const SPEEDS = [44, 96, 190];
+export const SPEEDS = [44, 96, 155];
 export const BAND_FRAC = [0.18, 0.25, 0.32];
 export const SIZE_COLOR = {
   small: ['#19C3FF', '#0055FF'],
@@ -22,9 +22,12 @@ export const SOLDIER_FRAME_MS = { small: 140, medium: 110, large: 90 };
 export const GOTCHI_TEST_URL = 'assets/gotchis/quickswap-dragon.png';
 // Desert basic Gotchi — all ground lane soldiers
 export const GOTCHI_ALT_URL = 'assets/gotchis/desert-basic.png';
+export const DESERT_SKY_URL = 'assets/backgrounds/desert/desertsky.png';
 export const DESERT_FAR_URL = 'assets/backgrounds/desert/desertfar.png';
 export const DESERT_MID_URL = 'assets/backgrounds/desert/desertmid.png';
 export const DESERT_FRONT_URL = 'assets/backgrounds/desert/desertfront.png';
+export const PALM_TREE_URL = 'assets/backgrounds/desert/palm_tree.png';
+export const CACTUS_URL = 'assets/backgrounds/desert/cactus.png';
 export const FAR1_SHEET_W = 100;
 export const FAR1_SHEET_H = 100;
 export const FAR1_FRAMES = 7;
@@ -43,6 +46,8 @@ export const DESERT_ATTACK_FRAME_MS = 90;
 export const FAR1_HURT_FRAME_MS = 90;
 export const FAR1_DRAW_SCALE = 1.4;
 export const CROUCH_SCALE_Y = 0.7;
+export const MAG_SIZE = 20;
+export const JAM_CHANCE = 0.02;
 export const ENEMY_Y_SHIFT = 0.10;
 export const MAX_LEVEL = 6;
 export const LEVEL_CONFIG = {

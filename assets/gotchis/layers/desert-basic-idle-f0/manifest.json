@@ -1,0 +1,38 @@
+{
+  "gotchiId": 2731,
+  "name": "desert-basic",
+  "view": "side",
+  "animation": "idle",
+  "row": 0,
+  "frame": 0,
+  "cell": 100,
+  "size": 100,
+  "layers": [
+    {
+      "file": "00-full.png",
+      "className": "(composite)",
+      "note": "Idle row 0 frame 0 — all layers combined"
+    },
+    {
+      "file": "00-full-from-sheet.png",
+      "className": "(from final sheet)",
+      "note": "Cropped from assets/gotchis/desert-basic.png for reference"
+    },
+    {
+      "file": "01-base-body.png",
+      "className": "Base Body: aWETH",
+      "source": "tools/aavegotchi-game-sprites/Trait Files/Sprites/punchbody/Base Body/aWETH.png"
+    },
+    {
+      "file": "02-eye-shape.png",
+      "className": "Eye Shape: common_3",
+      "source": "tools/aavegotchi-game-sprites/Trait Files/Sprites/punchbody/rare_low/common_3.png"
+    },
+    {
+      "file": "03-eye-color.png",
+      "className": "Eye Color: rare_low",
+      "source": "tools/aavegotchi-game-sprites/Trait Files/Sprites/punchbody/mythic_high_aWETH/rare_low.png"
+    }
+  ],
+  "note": "Side-view idle frame 0 from Trait Files spritesheets (not front SVG)."
+}

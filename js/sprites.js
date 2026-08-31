@@ -3,11 +3,11 @@ import {
   FAR1_SHEET_W, FAR1_SHEET_H, FAR1_FRAMES, FAR1_ROW_FRAME_COUNTS,
   FAR1_IDLE_ROW, FAR1_WALK_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
   FAR1_FRAME_MS, FAR1_WALK_FRAME_MS, FAR1_HURT_FRAME_MS, DESERT_ATTACK_FRAME_MS
-} from './config.js';
+} from './config.js?v=sfx24';
 
 export function getAnimRow(s) {
   // Keep hurt/hit row for the whole death sequence (including last-frame hold).
-  if (s.dying || s.dead) return s.hurtRow;
+  if (s.dying || s.dead) return s.deathAnimRow != null ? s.deathAnimRow : s.hurtRow;
   // Desert combat phases.
   if (s.desertPhase === 'prepare' || s.desertPhase === 'reset') {
     return s.stanceRow != null ? s.stanceRow : FAR1_STANCE_ROW;
@@ -142,6 +142,8 @@ export function buildSoldierSprites() {
     idleRow: FAR1_IDLE_ROW,
     walkRow: FAR1_WALK_ROW,
     attackRow: FAR1_ATTACK_ROW,
+    hurtRow: FAR1_HURT_ROW,
+    deathRow: FAR1_DEATH_ROW,
     framesPerRow: FAR1_FRAMES,
     rowFrameCounts: FAR1_ROW_FRAME_COUNTS.slice(),
     sheetDrawScale: flierScale,
@@ -158,10 +160,11 @@ export function updateSoldierAnimation(s, dt) {
   // Death: play hurt row once, then hard-lock the last hit frame until removal.
   // Do not run the normal row-switch reset — that was snapping back to frame 0.
   if (s.dying || s.dead) {
+    const deathRow = (s.deathAnimRow != null) ? s.deathAnimRow : s.hurtRow;
     const hold = (s.deathHoldFrame != null)
       ? s.deathHoldFrame
-      : Math.max(0, getRowFrameCount(s, s.hurtRow) - 1);
-    s.currentAnimRow = s.hurtRow;
+      : Math.max(0, getRowFrameCount(s, deathRow) - 1);
+    s.currentAnimRow = deathRow;
     s.animAcc += dt * 1000;
     while (s.animAcc >= FAR1_HURT_FRAME_MS) {
       s.animAcc -= FAR1_HURT_FRAME_MS;
