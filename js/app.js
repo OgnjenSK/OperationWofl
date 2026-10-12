@@ -1,15 +1,16 @@
-import { canvas, state, startBtn, menu, levelmap } from './state.js?v=sfx24';
+import { canvas, state, startBtn, menu, levelmap } from './state.js?v=sfx29';
 import { buildSoldierSprites } from './sprites.js?v=sfx26';
 import {
   initBackgroundImages, resize, updateBands,
   spawnHouses, updateHouses
-} from './background.js?v=sfx31';
-import { updateSoldiers, updateFliers, handleShoot, handleReload, handleReloadWheel, configureLevel, setOnLevelComplete, MAX_LEVEL } from './enemies.js?v=sfx29';
-import { render, updateEffects } from './render.js?v=sfx29';
+} from './background.js?v=sfx111';
+import { updateSoldiers, updateFliers, handleShoot, handleReload, handleReloadWheel, configureLevel, setOnLevelComplete, MAX_LEVEL } from './enemies.js?v=sfx96';
+import { startDesertMusic, unlockAudio } from './audio.js?v=sfx51';
+import { render, updateEffects } from './render.js?v=sfx82';
 import {
   setHud, setFade, updateMissionTitle,
   positionLevelArrows, blinkForLevel
-} from './ui.js?v=sfx27';
+} from './ui.js?v=sfx32';
 
 function startLoop() {
   if (state.rafId == null) state.rafId = requestAnimationFrame(loop);
@@ -88,6 +89,7 @@ function goToLevelMap() {
     state.last = 0;
     configureLevel(state.currentLevel);
     updateMissionTitle();
+    if (state.currentLevel === 1) startDesertMusic();
     startLoop();
     setFade(false);
   }, 300);
@@ -103,6 +105,7 @@ function startGame() {
     state.last = 0;
     configureLevel(state.currentLevel);
     updateMissionTitle();
+    if (state.currentLevel === 1) startDesertMusic();
     startLoop();
     setFade(false);
   }, 300);
@@ -117,7 +120,11 @@ function endLevel() {
 function init() {
   setOnLevelComplete(endLevel);
 
-  startBtn.onclick = goToLevelMap;
+  startBtn.onclick = () => {
+    unlockAudio();
+    goToLevelMap();
+  };
+  addEventListener('pointerdown', unlockAudio, { once: true });
   addEventListener('resize', resize);
 
   canvas.onmouseenter = () => {
@@ -136,6 +143,7 @@ function init() {
     state.cross.y = e.clientY - r.top;
   };
   canvas.onmousedown = e => {
+    unlockAudio();
     const r = canvas.getBoundingClientRect();
     const x = e.clientX - r.left;
     const y = e.clientY - r.top;
@@ -150,13 +158,33 @@ function init() {
   }, { passive: false });
   canvas.oncontextmenu = e => e.preventDefault();
 
-  addEventListener('keydown', e => {
-    const k = e.key.toLowerCase();
-    if (k === 'l') state.showLabels = !state.showLabels;
-    else if (k === 'b') state.showBoundingBoxes = !state.showBoundingBoxes;
-    else if (k === 'n') state.showNames = !state.showNames;
-    else if (k === 'h') state.showHitboxes = !state.showHitboxes;
+  const debugToggles = {
+    l: 'showLabels',
+    b: 'showBoundingBoxes',
+    n: 'showNames',
+    h: 'showHitboxes',
+    o: 'showPropHitboxes',
+    e: 'showLanes'
+  };
+  const debugButtons = document.querySelectorAll('#debugBar [data-toggle]');
+  const syncDebugButtons = () => {
+    debugButtons.forEach(btn => btn.classList.toggle('on', !!state[btn.dataset.toggle]));
+  };
+  debugButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.toggle;
+      state[key] = !state[key];
+      syncDebugButtons();
+      btn.blur();
+    });
   });
+  addEventListener('keydown', e => {
+    const key = debugToggles[e.key.toLowerCase()];
+    if (!key) return;
+    state[key] = !state[key];
+    syncDebugButtons();
+  });
+  syncDebugButtons();
 
   state.soldierSprites = buildSoldierSprites();
   initBackgroundImages(render);

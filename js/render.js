@@ -1,10 +1,17 @@
 import {
-  FAR1_SHEET_W, FAR1_SHEET_H, CROUCH_SCALE_Y
-} from './config.js?v=sfx24';
-import { g, state } from './state.js?v=sfx24';
-import { fillBand, drawPalmObject } from './background.js?v=sfx31';
+  FAR1_SHEET_W, FAR1_SHEET_H, CROUCH_SCALE_Y,
+  SAND_SPLASH_FRAME_W, SAND_SPLASH_FRAME_H, SAND_SPLASH_FRAMES,
+  SAND_SPLASH_FRAME_MS, SAND_SPLASH_GROUND_Y, SAND_SPLASH_DRAW_SCALE,
+  AMMO_URL, AMMO_ROWS, AMMO_PER_ROW, AMMO_DRAW_SCALE
+} from './config.js?v=sfx70';
+import { g, state } from './state.js?v=sfx29';
+import { drawPixelText, measurePixelText } from './pixelfont.js?v=4';
+import { fillBand, drawPalmObject, drawFarPyramids, drawFarCity, getSandSplashImage, drawPropHitboxes } from './background.js?v=sfx111';
 import { getAnimRow, getRowFrameCount } from './sprites.js?v=sfx26';
-import { getEnemyHitbox, getEnemyBounds, getFlierAnimRow } from './enemies.js?v=sfx29';
+import { getEnemyHitbox, getEnemyBounds, getFlierAnimRow, getEnemyLanes } from './enemies.js?v=sfx96';
+
+const ammoImg = new Image();
+ammoImg.src = AMMO_URL;
 
 function bandIndexForFeet(feetY) {
   const bands = state.bands;
@@ -119,6 +126,7 @@ function drawDepthLayer(bandIndex) {
   const band = state.bands[bandIndex];
   const items = [];
   (band.objects || []).forEach(o => {
+    if (o.kind === 'pyramid' || o.kind === 'pyramid2') return;
     items.push({ z: o.y + o.height, palm: o });
   });
   state.soldiers.forEach(s => {
@@ -126,10 +134,19 @@ function drawDepthLayer(bandIndex) {
       items.push({ z: s.y + s.h, soldier: s });
     }
   });
+  state.effects.forEach(e => {
+    if (e.type !== 'sandSplash' || e.bandIndex !== bandIndex) return;
+    items.push({ z: e.y, splash: e });
+  });
   items.sort((a, b) => a.z - b.z);
   items.forEach(it => {
+    if (it.palm && (it.palm.kind === 'coconut' || it.palm.kind === 'cactusBurst' || it.palm.kind === 'cactusDebris')) return;
     if (it.palm) drawPalmObject(it.palm);
+    else if (it.splash) drawSandSplash(it.splash);
     else drawSoldierSprite(it.soldier);
+  });
+  items.forEach(it => {
+    if (it.palm && (it.palm.kind === 'coconut' || it.palm.kind === 'cactusBurst' || it.palm.kind === 'cactusDebris')) drawPalmObject(it.palm);
   });
 }
 
@@ -139,8 +156,10 @@ export function drawSoldiers() {
 
 function drawWorld() {
   fillBand(state.sky);
+  drawFarCity();
   // Far layer
   fillBand(state.bands[0]);
+  drawFarPyramids();
   drawDepthLayer(0);
   // Flying dragons sit between far and middle depth.
   drawFliers();
@@ -223,19 +242,85 @@ export function drawFliers() {
   });
 }
 
+const HUD_LEFT_FRAC = 0.10;
+const hudLeft = () => Math.round(state.W * HUD_LEFT_FRAC);
+const HEALTH_W = 18, HEALTH_H = 58, HEALTH_GAP = 4, HEALTH_BOTTOM = 10;
+const HEALTH_COLOR = '#6f8cff';
+const HEALTH_GRAY_MS = 120, HEALTH_WHITE_MS = 120;
+
+let lastHealth = null;
+// Lost pieces animate one after another: each starts when the previous one has finished.
+const healthLoss = [];
+
+function drawHealthSegment(x, y, fill) {
+  g.fillStyle = fill;
+  g.fillRect(x, y, HEALTH_W, HEALTH_H);
+}
+
+// A lost piece turns gray, then white, then stays as a faint ghost like spent ammo.
 function drawHealth() {
   const max = state.maxHealth || 10, cur = state.health != null ? state.health : max;
-  const barWidth = 10, barHeight = 20, gap = 4, baseX = 10, y = state.H - barHeight - 8;
-  for (let i = 0; i < max; i++) {
-    const x = baseX + i * (barWidth + gap);
-    g.save();
-    g.fillStyle = i < cur ? '#4cff8a' : 'rgba(0,0,0,0.4)';
-    g.fillRect(x, y, barWidth, barHeight);
-    g.strokeStyle = '#000';
-    g.lineWidth = 1;
-    g.strokeRect(x + 0.5, y + 0.5, barWidth - 1, barHeight - 1);
-    g.restore();
+  const now = performance.now();
+  const pieceMs = HEALTH_GRAY_MS + HEALTH_WHITE_MS;
+  if (lastHealth != null && cur < lastHealth) {
+    for (let i = lastHealth - 1; i >= cur; i--) {
+      const prev = healthLoss[healthLoss.length - 1];
+      healthLoss.push({ i, t: prev ? Math.max(now, prev.t + pieceMs) : now });
+    }
+  } else if (lastHealth != null && cur > lastHealth) {
+    healthLoss.length = 0;
   }
+  lastHealth = cur;
+  while (healthLoss.length && now - healthLoss[0].t >= pieceMs) healthLoss.shift();
+  const y = state.H - HEALTH_H - HEALTH_BOTTOM;
+  const xAt = i => hudLeft() + i * (HEALTH_W + HEALTH_GAP);
+  g.save();
+  for (let i = 0; i < Math.min(cur, max); i++) drawHealthSegment(xAt(i), y, HEALTH_COLOR);
+  g.globalAlpha = 0.18;
+  for (let i = Math.max(0, cur); i < max; i++) drawHealthSegment(xAt(i), y, HEALTH_COLOR);
+  g.globalAlpha = 1;
+  for (const p of healthLoss) {
+    const age = now - p.t;
+    drawHealthSegment(xAt(p.i), y, age < 0 ? HEALTH_COLOR : age < HEALTH_GRAY_MS ? '#8d939c' : '#ffffff');
+  }
+  g.restore();
+}
+
+function ammoLayout() {
+  const bw = Math.round(ammoImg.naturalWidth * AMMO_DRAW_SCALE);
+  const bh = Math.round(ammoImg.naturalHeight * AMMO_DRAW_SCALE);
+  const gapX = 18, gapY = 12, multW = 62;
+  const x0 = hudLeft() + multW;
+  const rackBottom = state.H - HEALTH_BOTTOM - HEALTH_H - 16;
+  return {
+    bw, bh, gapX, gapY, x0, rackBottom,
+    rackH: AMMO_ROWS * bh + (AMMO_ROWS - 1) * gapY,
+    rackRight: x0 + AMMO_PER_ROW * bw + (AMMO_PER_ROW - 1) * gapX
+  };
+}
+
+function drawAmmo() {
+  if (!ammoImg.complete || !ammoImg.naturalWidth) return;
+  const mult = Math.max(0, (state.mags || 1) - 1);
+  const shown = Math.min(Math.max(0, state.ammo | 0), AMMO_ROWS * AMMO_PER_ROW);
+  const { bw, bh, gapX, gapY, x0, rackBottom, rackH } = ammoLayout();
+  g.save();
+  g.imageSmoothingEnabled = false;
+  for (let k = 0; k < AMMO_ROWS * AMMO_PER_ROW; k++) {
+    const row = Math.floor(k / AMMO_PER_ROW), col = k % AMMO_PER_ROW;
+    const x = x0 + col * (bw + gapX);
+    const y = rackBottom - (row + 1) * bh - row * gapY;
+    g.globalAlpha = k < shown ? 1 : 0.18;
+    g.drawImage(ammoImg, x, y, bw, bh);
+  }
+  g.restore();
+  drawPixelText(g, 'x' + mult, hudLeft(), rackBottom - rackH / 2, { scale: 3, color: '#ffffff', baseline: 'middle' });
+}
+
+function drawHudCaption() {
+  if (state.phase !== 'play' || !ammoImg.naturalWidth) return;
+  const { rackRight, rackBottom } = ammoLayout();
+  drawPixelText(g, 'ENEMIES: ' + state.enemiesLeft, rackRight + 28, rackBottom, { scale: 3, baseline: 'bottom' });
 }
 
 function drawBandLabels() {
@@ -261,16 +346,54 @@ function drawBandLabels() {
   g.restore();
 }
 
+const LANE_COLORS = {
+  far: ['rgba(25,195,255,0.18)', 'rgba(25,195,255,0.95)'],
+  middle: ['rgba(255,62,158,0.18)', 'rgba(255,62,158,0.95)'],
+  front: ['rgba(255,212,0,0.18)', 'rgba(255,212,0,0.95)']
+};
+
+function drawEnemyLanes() {
+  if (!state.showLanes) return;
+  g.save();
+  g.font = 'bold 12px system-ui,-apple-system,Segoe UI,Roboto,Arial';
+  g.textBaseline = 'middle';
+  g.lineWidth = 1.5;
+  getEnemyLanes().forEach(lane => {
+    const [fill, line] = LANE_COLORS[lane.name];
+    const h = Math.max(1, lane.bottom - lane.top);
+    g.fillStyle = fill;
+    g.fillRect(0, lane.top, state.W, h);
+    g.strokeStyle = line;
+    g.setLineDash([8, 6]);
+    g.beginPath();
+    g.moveTo(0, lane.top + 0.5); g.lineTo(state.W, lane.top + 0.5);
+    g.moveTo(0, lane.bottom + 0.5); g.lineTo(state.W, lane.bottom + 0.5);
+    g.stroke();
+    g.setLineDash([]);
+    const label = lane.name + ' lane';
+    const tw = g.measureText(label).width + 10;
+    const tx = state.W - tw - 10;
+    const ty = lane.top + h * 0.5;
+    g.fillStyle = 'rgba(0,0,0,0.65)';
+    g.fillRect(tx, ty - 9, tw, 18);
+    g.fillStyle = line;
+    g.fillText(label, tx + 5, ty);
+  });
+  g.restore();
+}
+
 function drawCalloutHint(cx, cy, opts) {
-  const label = opts.label;
+  const label = opts.label.toUpperCase();
   const color = opts.color;
+  const textScale = 2;
   const startR = 11;
   const diag = 16;
-  const horiz = opts.horiz || 38;
+  const horiz = Math.max(opts.horiz || 38, measurePixelText(label, textScale) + 6);
+  const edge = startR + diag + horiz;
   let sx = opts.sx;
   let sy = opts.sy;
-  if (sx > 0 && cx > state.W - 72) sx = -1;
-  else if (sx < 0 && cx < 72) sx = 1;
+  if (sx > 0 && cx > state.W - edge) sx = -1;
+  else if (sx < 0 && cx < edge) sx = 1;
   if (sy > 0 && cy > state.H - 36) sy = -1;
   else if (sy < 0 && cy < 36) sy = 1;
   const x0 = cx + sx * startR;
@@ -300,26 +423,25 @@ function drawCalloutHint(cx, cy, opts) {
   g.lineTo(x2, y1);
   g.stroke();
 
-  g.font = 'bold 11px system-ui,-apple-system,Segoe UI,Roboto,Arial';
-  g.textAlign = 'center';
-  g.textBaseline = textAbove ? 'bottom' : 'top';
-  g.lineWidth = 2;
-  g.strokeStyle = 'rgba(0,0,0,0.75)';
-  g.strokeText(label, tx, ty);
-  g.fillStyle = color;
-  g.fillText(label, tx, ty);
   g.restore();
+  drawPixelText(g, label, tx, ty, {
+    scale: textScale, color, align: 'center', baseline: textAbove ? 'bottom' : 'top'
+  });
+}
+
+// Red <-> yellow pulse shared by the reload and jammed hints.
+function hintPulseColor() {
+  const mix = 0.5 + 0.5 * Math.sin(((state.last || 0) / 180) * Math.PI * 2);
+  const gg = Math.round(26 + (230 - 26) * mix);
+  const b = Math.round(26 * (1 - mix));
+  return 'rgb(255,' + gg + ',' + b + ')';
 }
 
 function drawReloadHint(cx, cy) {
-  if (state.phase !== 'play' || state.ammo > 0 || state.jammed) return;
-  const mix = 0.5 + 0.5 * Math.sin(((state.last || 0) / 180) * Math.PI * 2);
-  const r = 255;
-  const gg = Math.round(26 + (230 - 26) * mix);
-  const b = Math.round(26 * (1 - mix));
+  if (state.phase !== 'play' || state.ammo > 0 || state.jammed || state.mags <= 1) return;
   drawCalloutHint(cx, cy, {
     label: 'reload',
-    color: 'rgb(' + r + ',' + gg + ',' + b + ')',
+    color: hintPulseColor(),
     sx: 1,
     sy: 1
   });
@@ -327,13 +449,9 @@ function drawReloadHint(cx, cy) {
 
 function drawJamHint(cx, cy) {
   if (state.phase !== 'play' || !state.jammed) return;
-  const mix = 0.5 + 0.5 * Math.sin(((state.last || 0) / 180) * Math.PI * 2);
-  const r = 255;
-  const gg = Math.round(26 + (140 - 26) * mix);
-  const b = Math.round(26 * (1 - mix));
   drawCalloutHint(cx, cy, {
     label: 'jammed',
-    color: 'rgb(' + r + ',' + gg + ',' + b + ')',
+    color: hintPulseColor(),
     sx: 1,
     sy: -1,
     horiz: 42
@@ -371,7 +489,13 @@ function drawCross() {
 }
 
 export function updateEffects(dt) {
-  state.effects.forEach(e => e.t += dt);
+  state.effects.forEach(e => {
+    if (e.type === 'sandSplash' && e.bandIndex != null) {
+      const band = state.bands[e.bandIndex];
+      if (band) e.x -= band.speed * dt;
+    }
+    e.t += dt;
+  });
   state.effects = state.effects.filter(e => e.t < e.dur);
 }
 
@@ -446,6 +570,28 @@ function drawEffects() {
   });
 }
 
+function drawSandSplash(e) {
+  const img = getSandSplashImage();
+  if (!img || !(img.naturalWidth > 0 || (img.width > 0 && img.getContext))) return;
+  const frame = Math.min(
+    SAND_SPLASH_FRAMES - 1,
+    Math.max(0, Math.floor((e.t * 1000) / SAND_SPLASH_FRAME_MS))
+  );
+  const srcW = SAND_SPLASH_FRAME_W;
+  const srcH = SAND_SPLASH_FRAME_H;
+  const sx = frame * srcW;
+  const sw = Math.min(srcW, Math.max(1, (img.naturalWidth || img.width) - sx));
+  const scale = e.scale != null ? e.scale : SAND_SPLASH_DRAW_SCALE;
+  const dw = Math.round(srcW * scale);
+  const dh = Math.round(srcH * scale);
+  const dx = Math.round(e.x - dw * 0.5);
+  const dy = Math.round(e.y - SAND_SPLASH_GROUND_Y * scale);
+  g.save();
+  g.imageSmoothingEnabled = false;
+  g.drawImage(img, sx, 0, sw, srcH, dx, dy, dw, dh);
+  g.restore();
+}
+
 export function render() {
   g.clearRect(0, 0, state.W, state.H);
   g.save();
@@ -453,7 +599,11 @@ export function render() {
   drawWorld();
   g.restore();
   drawBandLabels();
+  drawEnemyLanes();
+  if (state.showPropHitboxes) drawPropHitboxes();
   drawHealth();
   drawEffects();
+  drawAmmo();
+  drawHudCaption();
   drawCross();
 }

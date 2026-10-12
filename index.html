@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Aavegotchi Wofl — Repaired Main Build</title>
-  <link rel="stylesheet" href="css/styles.css" />
+  <link rel="stylesheet" href="css/styles.css?v=3" />
 </head>
 <body>
   <div id="fade"></div>
@@ -47,10 +47,17 @@
     </div>
   </div>
 
-  <div class="legend">Layer Markings ON — press L / B / N / H</div>
-  <div class="hud" id="enemyHud">ENEMIES: 10</div>
+  <div id="debugBar">
+    <button data-toggle="showLanes">Enemy lanes <kbd>E</kbd></button>
+    <button data-toggle="showPropHitboxes">Object hitboxes <kbd>O</kbd></button>
+    <button data-toggle="showHitboxes">Enemy hitboxes <kbd>H</kbd></button>
+    <button data-toggle="showBoundingBoxes">Bounds <kbd>B</kbd></button>
+    <button data-toggle="showNames">Names <kbd>N</kbd></button>
+    <button data-toggle="showLabels">Bands <kbd>L</kbd></button>
+  </div>
+  <div class="hud" id="enemyHud">ENEMIES: 20</div>
   <canvas id="game"></canvas>
 
-  <script type="module" src="js/app.js?v=sfx40"></script>
+  <script type="module" src="js/app.js?v=sfx170"></script>
 </body>
 </html>

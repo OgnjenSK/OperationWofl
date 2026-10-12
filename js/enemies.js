@@ -2,14 +2,17 @@ import {
   SIZE_COLOR, TYPE_NAMES, TYPE_SPEEDS, ENEMY_Y_SHIFT,
   LEVEL_CONFIG, MAX_LEVEL, SOLDIER_FRAME_MS, JAM_CHANCE,
   CROUCH_SCALE_Y, FAR1_SHEET_W, FAR1_SHEET_H, FAR1_HURT_FRAME_MS,
-  FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW
-} from './config.js?v=sfx24';
-import { state } from './state.js?v=sfx24';
-import { playShootSound, playHitSound, playJamSound, playMagOutSound, playReloadSound, playEnemyShootSound, playWingFlapSound, playDesertLaserSound, playFireballSound } from './audio.js?v=sfx24';
-import { damagePlayer, setHud } from './ui.js?v=sfx24';
+  FAR1_IDLE_ROW, FAR1_STANCE_ROW, FAR1_ATTACK_ROW, FAR1_HURT_ROW, FAR1_DEATH_ROW,
+  SAND_SPLASH_FRAMES, SAND_SPLASH_FRAME_MS, SAND_SPLASH_DRAW_SCALE, BAND_UNIT_SCALE,
+  MAG_SIZE, AMMO_MAGS, AMMO_REFILL_MS, PLAYER_MAX_HEALTH
+} from './config.js?v=sfx70';
+import { state } from './state.js?v=sfx29';
+import { playShootSound, playEnemyGaspSound, playRadarHitSound, playPalmHitSound, playCactusTearSound, playCactusSplashSound, playPyramidHitSound, playJamSound, playMagOutSound, playReloadSound, playEnemyShootSound, playWingFlapSound, playDesertLaserSound, playFireballSound } from './audio.js?v=sfx51';
+import { damagePlayer, setHud } from './ui.js?v=sfx32';
 import {
   getAnimRow, getRowFrameCount, getAttackAnimDuration, updateSoldierAnimation
 } from './sprites.js?v=sfx26';
+import { findFrontmostPropAt, applyPropHit, hitWorldPropAt, resetCityScroll } from './background.js?v=sfx111';
 
 let onLevelComplete = () => {};
 
@@ -102,26 +105,114 @@ function markEnemyKilled(target) {
   }
 }
 
-function chooseHitTarget(x, y) {
-  let target = null;
-  let bestFeet = -1e9;
+function bandDepthIndexForFeet(feetY) {
+  let bandIndex = 0;
+  for (let i = 0; i < state.bands.length; i++) {
+    const b = state.bands[i];
+    if (feetY >= b.y && feetY < b.y + b.h) return i;
+    if (feetY >= b.y) bandIndex = i;
+  }
+  return bandIndex;
+}
+
+function chooseFrontmostHit(x, y) {
+  let best = null;
+  let bestDepth = -1e9;
+
   state.soldiers.forEach(s => {
     if (s.dying || s.dead) return;
     const hb = getEnemyHitbox(s);
-    if (x >= hb.x && x <= hb.x + hb.w && y >= hb.y && y <= hb.y + hb.h) {
-      const feet = s.y + s.h;
-      if (feet > bestFeet) { bestFeet = feet; target = s; }
+    if (x < hb.x || x > hb.x + hb.w || y < hb.y || y > hb.y + hb.h) return;
+    const feet = s.y + s.h;
+    const depth = bandDepthIndexForFeet(feet) * 1e6 + feet;
+    if (depth > bestDepth) {
+      bestDepth = depth;
+      best = { type: 'enemy', target: s, depth };
     }
   });
-  if (target) return target;
+
+  const midY = state.bands[1] ? state.bands[1].y : 0;
   state.fliers.forEach(f => {
     if (f.dying || f.dead) return;
-    if (x >= f.x - f.r && x <= f.x + f.r && y >= f.y - f.r && y <= f.y + f.r) {
-      const feet = f.y + f.r;
-      if (feet > bestFeet) { bestFeet = feet; target = f; }
+    if (x < f.x - f.r || x > f.x + f.r || y < f.y - f.r || y > f.y + f.r) return;
+    const depth = midY - 10 + (f.y + f.r) * 0.0001;
+    if (depth > bestDepth) {
+      bestDepth = depth;
+      best = { type: 'enemy', target: f, depth };
     }
   });
-  return target;
+
+  const prop = findFrontmostPropAt(x, y);
+  if (prop && prop.depth > bestDepth) {
+    best = { type: 'prop', prop, depth: prop.depth };
+  }
+  return best;
+}
+
+function pointInRect(x, y, r) {
+  return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+}
+
+function getFlierBounds(f) {
+  const drawW = Math.round((f.sheetFrameW || FAR1_SHEET_W) * (f.sheetDrawScale || 2.4));
+  const drawH = Math.round((f.sheetFrameH || FAR1_SHEET_H) * (f.sheetDrawScale || 2.4));
+  return {
+    x: Math.round(f.x - drawW * 0.5),
+    y: Math.round(f.y - drawH * 0.5),
+    w: drawW,
+    h: drawH
+  };
+}
+
+function shotHitsWorldObject(x, y) {
+  for (let i = 0; i < state.soldiers.length; i++) {
+    if (pointInRect(x, y, getEnemyBounds(state.soldiers[i]))) return true;
+  }
+  for (let i = 0; i < state.fliers.length; i++) {
+    if (pointInRect(x, y, getFlierBounds(state.fliers[i]))) return true;
+  }
+  return hitWorldPropAt(x, y);
+}
+
+function bandIndexAtY(y) {
+  const bands = state.bands;
+  if (!bands.length) return -1;
+  if (y < bands[0].y) return -1;
+  for (let i = 0; i < bands.length; i++) {
+    const b = bands[i];
+    if (y < b.y + b.h) return i;
+  }
+  return bands.length - 1;
+}
+
+function spawnSandSplash(x, y) {
+  const bandIndex = bandIndexAtY(y);
+  if (bandIndex < 0) return;
+  const unit = BAND_UNIT_SCALE[bandIndex] || BAND_UNIT_SCALE[BAND_UNIT_SCALE.length - 1];
+  const front = BAND_UNIT_SCALE[BAND_UNIT_SCALE.length - 1];
+  state.effects.push({
+    type: 'sandSplash',
+    x,
+    y,
+    t: 0,
+    dur: (SAND_SPLASH_FRAMES * SAND_SPLASH_FRAME_MS) / 1000,
+    bandIndex,
+    scale: SAND_SPLASH_DRAW_SCALE * (unit / front)
+  });
+}
+
+let ammoRefillTimer = null;
+
+function scheduleAmmoRefill() {
+  clearTimeout(ammoRefillTimer);
+  ammoRefillTimer = setTimeout(() => {
+    ammoRefillTimer = null;
+    if (state.phase !== 'play' || state.ammo > 0 || state.mags > 1) return;
+    state.mags = AMMO_MAGS;
+    state.ammo = state.magSize;
+    playReloadSound();
+    setHud();
+  }, AMMO_REFILL_MS);
 }
 
 export function handleShoot(x, y) {
@@ -136,31 +227,53 @@ export function handleShoot(x, y) {
     return;
   }
   state.ammo--;
-  playShootSound();
+  if (state.ammo <= 0 && state.mags <= 1) scheduleAmmoRefill();
+  const hit = chooseFrontmostHit(x, y);
+  const skyMiss = !hit && !hitWorldPropAt(x, y) && bandIndexAtY(y) < 0;
+  playShootSound(skyMiss ? 0.35 : 1);
   state.effects.push({ type: 'flash', x, y, t: 0, dur: 0.15 });
   if (Math.random() < (JAM_CHANCE || 0.02)) {
     state.jammed = true;
     state.reloadDir = 0;
   }
   setHud();
-  const target = chooseHitTarget(x, y);
-  if (!target) return;
-  playHitSound();
-  if (target.hp != null) {
-    target.hp--;
-    if (target.hp <= 0) markEnemyKilled(target);
-  } else {
-    markEnemyKilled(target);
+  if (!hit) {
+    if (!shotHitsWorldObject(x, y)) spawnSandSplash(x, y);
+    return;
   }
-  state.effects.push({ type: 'hit', x, y, t: 0, dur: 0.18 });
+  if (hit.type === 'enemy') {
+    const target = hit.target;
+    if (target.hp != null) {
+      target.hp--;
+      if (target.hp <= 0) {
+        playEnemyGaspSound();
+        markEnemyKilled(target);
+      }
+    } else {
+      playEnemyGaspSound();
+      markEnemyKilled(target);
+    }
+    state.effects.push({ type: 'hit', x, y, t: 0, dur: 0.18 });
+    return;
+  }
+  const kind = applyPropHit(hit.prop, x, y);
+  if (kind === 'palm' || kind === 'cactus') playPalmHitSound();
+  if (kind === 'cactusTear') playCactusTearSound();
+  if (kind === 'cactusSplash') playCactusSplashSound();
+  if (kind === 'pyramid' || kind === 'pyramid2' || kind === 'coconut') playPyramidHitSound();
+  if (kind === 'radar') {
+    playRadarHitSound();
+    state.effects.push({ type: 'hit', x, y, t: 0, dur: 0.18 });
+  }
 }
 
 export function handleReload() {
   if (state.phase !== 'play') return;
-  if (state.ammo > 0) return;
+  if (state.ammo > 0 || state.mags <= 1) return;
   playMagOutSound();
   setTimeout(() => playReloadSound(), 120);
-  state.ammo = state.magSize || 20;
+  state.mags--;
+  state.ammo = state.magSize;
   setHud();
 }
 
@@ -236,17 +349,39 @@ function isDesertSoldier(s) {
     || s.name === 'front1' || s.name === 'front2';
 }
 
+/** Ground strips (fraction of a band's height) where each size picks its base line; one strip chosen at random. */
+const SPAWN_LANES = {
+  small: [{ band: 1, from: 0, to: 0.6 }],
+  medium: [{ band: 2, from: 0, to: 0.2 }, { band: 1, from: 0.8, to: 1 }],
+  large: [{ band: 2, from: 0.4, to: 1 }]
+};
+const LANE_NAMES = { small: 'far', medium: 'middle', large: 'front' };
+
+function laneBaseRange(lane) {
+  const band = state.bands[lane.band];
+  const min = band.y + band.h * lane.from + 2;
+  const max = Math.max(min + 1, band.y + band.h * lane.to - 2);
+  return { min, max };
+}
+
+/** Screen-space Y ranges where each lane's enemies have their feet (for the debug overlay). */
+export function getEnemyLanes() {
+  const out = [];
+  Object.keys(SPAWN_LANES).forEach(size => {
+    const spr = state.soldierSprites && state.soldierSprites[size] && state.soldierSprites[size][0];
+    const feetShift = spr ? Math.round(spr.h * ENEMY_Y_SHIFT) : 0;
+    SPAWN_LANES[size].forEach(lane => {
+      const { min, max } = laneBaseRange(lane);
+      out.push({ size, name: LANE_NAMES[size], top: min + feetShift, bottom: max + feetShift });
+    });
+  });
+  return out;
+}
+
 function spawnOne(size) {
-  const b1 = state.bands[1], b2 = state.bands[2];
-  const baseIn = (band, a, b) => {
-    const top = band.y + band.h * a, bot = band.y + band.h * b;
-    const min = top + 2, max = Math.max(min + 1, bot - 2);
-    return min + Math.random() * (max - min);
-  };
-  let base;
-  if (size === 'large') base = baseIn(b2, 0.4, 1);
-  else if (size === 'medium') base = Math.random() < 0.5 ? baseIn(b2, 0, 0.2) : baseIn(b1, 0.8, 1);
-  else base = baseIn(b1, 0, 0.6);
+  const lanes = SPAWN_LANES[size];
+  const { min, max } = laneBaseRange(lanes[(Math.random() * lanes.length) | 0]);
+  const base = min + Math.random() * (max - min);
   const variants = state.soldierSprites[size];
   const idx = Math.random() < 0.5 ? 0 : 1;
   const spr = variants[idx];
@@ -520,9 +655,9 @@ function tickSoldierSpawnTimer(size, dt, base, variance) {
 }
 
 export function updateSoldiers(dt) {
-  tickSoldierSpawnTimer('small', dt, 6, 4);
-  tickSoldierSpawnTimer('medium', dt, 7, 5);
-  tickSoldierSpawnTimer('large', dt, 8, 6);
+  tickSoldierSpawnTimer('small', dt, 3, 2);
+  tickSoldierSpawnTimer('medium', dt, 3.5, 2.5);
+  tickSoldierSpawnTimer('large', dt, 4, 3);
 
   state.soldiers.forEach(s => {
     updateDyingSoldier(s, dt);
@@ -692,11 +827,11 @@ function updateDyingFlier(f, dt) {
 export function updateFliers(dt) {
   state.flyingTimer -= dt;
   if (state.flyingTimer <= 0) {
-    if (state.fliers.length === 0) {
+    if (state.fliers.length < 2) {
       spawnFlier();
-      state.flyingTimer = 6 + Math.random() * 6;
+      state.flyingTimer = 3 + Math.random() * 3;
     } else {
-      state.flyingTimer = 1.5;
+      state.flyingTimer = 0.75;
     }
   }
   state.fliers.forEach(f => {
@@ -809,26 +944,32 @@ export function updateFliers(dt) {
 
 export function resetSpawnTimers() {
   const scale = state.spawnScale || 1;
-  state.soldierTimers.small = (6 + Math.random() * 4) * scale;
-  state.soldierTimers.medium = (7 + Math.random() * 5) * scale;
-  state.soldierTimers.large = (8 + Math.random() * 6) * scale;
-  state.flyingTimer = 6 + Math.random() * 6;
+  state.soldierTimers.small = (3 + Math.random() * 2) * scale;
+  state.soldierTimers.medium = (3.5 + Math.random() * 2.5) * scale;
+  state.soldierTimers.large = (4 + Math.random() * 3) * scale;
+  state.flyingTimer = 3 + Math.random() * 3;
 }
 
 export function configureLevel(lvl) {
   const cfg = LEVEL_CONFIG[lvl] || LEVEL_CONFIG[1];
   state.enemiesLeft = cfg.enemies;
   state.spawnScale = cfg.spawnScale;
+  state.maxHealth = PLAYER_MAX_HEALTH;
   state.health = state.maxHealth;
   state.soldiers.length = 0;
   state.fliers.length = 0;
   state.effects.length = 0;
   state.jammed = false;
   state.reloadDir = 0;
-  state.ammo = state.magSize || 20;
+  state.magSize = MAG_SIZE;
+  state.ammo = MAG_SIZE;
+  state.mags = AMMO_MAGS;
+  clearTimeout(ammoRefillTimer);
+  ammoRefillTimer = null;
   if (state.bands[0] && state.bands[0].objects) state.bands[0].objects.length = 0;
   if (state.bands[1] && state.bands[1].objects) state.bands[1].objects.length = 0;
   if (state.bands[2] && state.bands[2].objects) state.bands[2].objects.length = 0;
+  resetCityScroll();
   resetSpawnTimers();
   setHud();
 }
